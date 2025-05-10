@@ -5,39 +5,53 @@
  * в нише эстетической медицины через интерфейс Telegram бота.
  */
 
-import { Telegraf, Scenes } from "telegraf"
-import type { MiddlewareFn } from "telegraf/types"
-import {
-  ScraperBotContext,
+import { Telegraf, Scenes } from "telegraf";
+import { competitorScene } from "./scenes/competitor-scene";
+import { projectScene } from "./scenes/project-scene";
+import type { Middleware } from "telegraf";
+import type {
   StorageAdapter,
+  ScraperBotContext,
   InstagramScraperBotConfig,
-} from "@/types"
-import projectScene from "@/scenes/project-scene"
-import competitorScene from "@/scenes/competitor-scene"
+  // Project, // Закомментировано: не используется напрямую в этом файле, только реэкспортируется
+  // Competitor, // Закомментировано: не используется напрямую в этом файле, только реэкспортируется
+  // Hashtag, // Закомментировано: не используется напрямую в этом файле, только реэкспортируется
+  // ReelContent, // Закомментировано: не используется напрямую в этом файле, только реэкспортируется
+} from "@/types";
+// import type { MiddlewareFn } from "telegraf/types" // Закомментировано
+// import type { ScraperBotContext } from "./types_telegraf" // Закомментировано
 
-// Публичные экспорты
-import {
-  createNeonStorageAdapter,
-  createMemoryStorageAdapter,
-  createMultitenantNeonStorageAdapter,
-} from "@/storage"
+// import {
+//   type StorageAdapter,
+//   type User,
+//   type Project,
+//   type Competitor,
+// } from "@/types" // Закомментировано
+
+// import {
+//   createNeonStorageAdapter,
+//   initializeNeonStorage,
+//   createMultitenantNeonStorageAdapter,
+// } from "@/storage" // Закомментировано
+
+// import { logger } from "./logger" // Закомментировано
 
 // Экспортируем типы
 export type {
   StorageAdapter,
   ScraperBotContext,
-  Project,
-  Competitor,
-  Hashtag,
-  Reel,
+  // Project, // Закомментировано: не используется напрямую в этом файле, только реэкспортируется
+  // Competitor, // Закомментировано: не используется напрямую в этом файле, только реэкспортируется
+  // Hashtag, // Закомментировано: не используется напрямую в этом файле, только реэкспортируется
+  // ReelContent as Reel, // Закомментировано: не используется напрямую в этом файле, только реэкспортируется
   InstagramScraperBotConfig,
-} from "@/types"
+} from "@/types";
 
 // Экспорт функций хранилища
-export * from "@/storage"
+// export * from "@/storage" // Закомментировано
 
 // Экспорт функций скрапера
-export * from "@/agent"
+// export * from "@/agent" // Закомментировано временно
 
 /**
  * Настройка модуля Instagram Scraper Bot
@@ -48,7 +62,7 @@ export * from "@/agent"
  * @returns Объект с API модуля
  */
 export function setupInstagramScraperBot(
-  bot: Telegraf<ScraperBotContext>,
+  bot: Telegraf<ScraperBotContext>, // Используем импортированный ScraperBotContext
   storageAdapter: StorageAdapter,
   config: InstagramScraperBotConfig
 ) {
@@ -57,30 +71,34 @@ export function setupInstagramScraperBot(
     projectScene,
     competitorScene,
     // Здесь будут добавляться другие сцены
-  ])
+  ]);
 
   // Добавляем middleware для доступа к хранилищу и конфигурации
-  bot.use((ctx, next) => {
-    ctx.storage = storageAdapter
-    // @ts-expect-error - scraperConfig не определен в типе Context
-    ctx.scraperConfig = config
-    return next()
-  })
+  bot.use((ctx: ScraperBotContext, next) => {
+    // Явно типизируем ctx
+    ctx.storage = storageAdapter;
+    ctx.scraperConfig = config;
+    return next();
+  });
 
   // Подключаем Stage middleware
-  bot.use(stage.middleware() as MiddlewareFn<ScraperBotContext>)
+  bot.use(stage.middleware() as Middleware<ScraperBotContext>);
 
   // Регистрируем обработчики команд
-  bot.command("projects", ctx => ctx.scene.enter("instagram_scraper_projects"))
-  bot.command("competitors", ctx =>
+  bot.command("projects", (ctx) =>
+    ctx.scene.enter("instagram_scraper_projects")
+  );
+  bot.command("competitors", (ctx) =>
     ctx.scene.enter("instagram_scraper_competitors")
-  )
+  );
 
   // Обработчики текстовых сообщений для меню
-  bot.hears("📊 Проекты", ctx => ctx.scene.enter("instagram_scraper_projects"))
-  bot.hears("🔍 Конкуренты", ctx =>
+  bot.hears("📊 Проекты", (ctx) =>
+    ctx.scene.enter("instagram_scraper_projects")
+  );
+  bot.hears("🔍 Конкуренты", (ctx) =>
     ctx.scene.enter("instagram_scraper_competitors")
-  )
+  );
 
   // Возвращаем API модуля
   return {
@@ -103,5 +121,5 @@ export function setupInstagramScraperBot(
       { command: "scrape", description: "Запустить скрапинг" },
       { command: "reels", description: "Просмотр результатов" },
     ],
-  }
+  };
 }

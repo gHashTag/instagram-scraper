@@ -5,57 +5,57 @@
  * процессом разработки и тестирования модуля Instagram Scraper Bot.
  */
 
-import express from "express"
-import { exec } from "child_process"
-import path from "path"
-import fs from "fs"
-import { fileURLToPath } from "url"
-import open from "open"
-import chalk from "chalk"
-import { Database } from "bun:sqlite"
-import dotenv from "dotenv"
+import express from "express";
+import { exec } from "child_process";
+import path from "path";
+import fs from "fs";
+import { fileURLToPath } from "url";
+import open from "open";
+// import chalk from "chalk" // TS6133: 'chalk' is declared but its value is never read.
+import { Database } from "bun:sqlite";
+import dotenv from "dotenv";
 
 // Initialize environment variables
-dotenv.config()
+dotenv.config();
 
 // Set up paths
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = path.dirname(__filename)
-const ROOT_DIR = path.resolve(__dirname, "..")
-const DEV_DIR = path.resolve(ROOT_DIR, ".dev")
-const SQLITE_DB_PATH = path.resolve(DEV_DIR, "sqlite.db")
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const ROOT_DIR = path.resolve(__dirname, "..");
+const DEV_DIR = path.resolve(ROOT_DIR, ".dev");
+const SQLITE_DB_PATH = path.resolve(DEV_DIR, "sqlite.db");
 
 // Make sure .dev directory exists
 if (!fs.existsSync(DEV_DIR)) {
-  fs.mkdirSync(DEV_DIR, { recursive: true })
+  fs.mkdirSync(DEV_DIR, { recursive: true });
 }
 
 // Create Express app
-const app = express()
-const PORT = 3456
+const app = express();
+const PORT = 3456;
 
 // Serve static files
-app.use(express.static(path.join(ROOT_DIR, "public")))
-app.use(express.json())
+app.use(express.static(path.join(ROOT_DIR, "public")));
+app.use(express.json());
 
 // Set up templating
-app.set("view engine", "ejs")
-app.set("views", path.join(ROOT_DIR, "views"))
+app.set("view engine", "ejs");
+app.set("views", path.join(ROOT_DIR, "views"));
 
 // Create views directory if it doesn't exist
-const viewsDir = path.join(ROOT_DIR, "views")
+const viewsDir = path.join(ROOT_DIR, "views");
 if (!fs.existsSync(viewsDir)) {
-  fs.mkdirSync(viewsDir, { recursive: true })
+  fs.mkdirSync(viewsDir, { recursive: true });
 }
 
 // Create public directory if it doesn't exist
-const publicDir = path.join(ROOT_DIR, "public")
+const publicDir = path.join(ROOT_DIR, "public");
 if (!fs.existsSync(publicDir)) {
-  fs.mkdirSync(publicDir, { recursive: true })
+  fs.mkdirSync(publicDir, { recursive: true });
 }
 
 // Create EJS template
-const templatePath = path.join(viewsDir, "dashboard.ejs")
+const templatePath = path.join(viewsDir, "dashboard.ejs");
 if (!fs.existsSync(templatePath)) {
   const templateContent = `
 <!DOCTYPE html>
@@ -673,121 +673,121 @@ if (!fs.existsSync(templatePath)) {
   </script>
 </body>
 </html>
-  `
+  `;
 
-  fs.writeFileSync(templatePath, templateContent)
+  fs.writeFileSync(templatePath, templateContent);
 }
 
 // Create css directory and file
-const cssDir = path.join(publicDir, "css")
+const cssDir = path.join(publicDir, "css");
 if (!fs.existsSync(cssDir)) {
-  fs.mkdirSync(cssDir, { recursive: true })
+  fs.mkdirSync(cssDir, { recursive: true });
 }
 
 // Интерфейсы для типизации
 interface TableRow {
-  name: string
-  [key: string]: any
+  name: string;
+  [key: string]: any;
 }
 
 interface TableColumn {
-  name: string
-  type: string
+  name: string;
+  type: string;
 }
 
 interface CountQuery {
-  count: number
+  count: number;
 }
 
 interface DatabaseTable {
-  name: string
-  columns: TableColumn[]
-  rows?: any[]
+  name: string;
+  columns: TableColumn[];
+  rows?: any[];
 }
 
 // Set up routes
-app.get("/", async (req, res) => {
+app.get("/", async (_req, res) => {
   const dbType = process.env.NEON_DATABASE_URL?.startsWith("postgres")
     ? "Neon"
-    : "SQLite"
-  const dbUrl = process.env.NEON_DATABASE_URL || "sqlite:///.dev/sqlite.db"
-  const dbConnected = true // This would need to be checked for real
+    : "SQLite";
+  const dbUrl = process.env.NEON_DATABASE_URL || "sqlite:///.dev/sqlite.db";
+  const dbConnected = true; // This would need to be checked for real
 
   // Get table information from SQLite database
-  const tables: DatabaseTable[] = []
-  let selectedTable: DatabaseTable | null = null
+  const tables: DatabaseTable[] = [];
+  let selectedTable: DatabaseTable | null = null;
   const counts = {
     users: 0,
     projects: 0,
     competitors: 0,
     hashtags: 0,
     reels: 0,
-  }
+  };
   const testResults = {
     unit: { status: "pending", passed: 0, total: 0 },
     integration: { status: "pending", passed: 0, total: 0 },
     mocks: { status: "pending" },
-  }
-  const testLogs = ""
-  const logs = ""
+  };
+  const testLogs = "";
+  const logs = "";
 
   // Try to read from SQLite database if it exists
   if (fs.existsSync(SQLITE_DB_PATH)) {
     try {
-      const db = new Database(SQLITE_DB_PATH)
+      const db = new Database(SQLITE_DB_PATH);
 
       // Get table information
       const tableRows = db
         .prepare(
           "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
         )
-        .all() as TableRow[]
+        .all() as TableRow[];
 
       for (const tableRow of tableRows) {
-        const tableName = tableRow.name
+        const tableName = tableRow.name;
         const columnsQuery = db
           .prepare(`PRAGMA table_info(${tableName})`)
-          .all() as TableColumn[]
+          .all() as TableColumn[];
 
-        const columns = columnsQuery.map(col => ({
+        const columns = columnsQuery.map((col) => ({
           name: col.name,
           type: col.type,
-        }))
+        }));
 
         const countQuery = db
           .prepare(`SELECT COUNT(*) as count FROM ${tableName}`)
-          .get() as CountQuery
+          .get() as CountQuery;
 
         tables.push({
           name: tableName,
           columns,
-        })
+        });
 
         // Update counts
-        if (tableName === "Users") counts.users = countQuery.count
-        if (tableName === "Projects") counts.projects = countQuery.count
-        if (tableName === "Competitors") counts.competitors = countQuery.count
-        if (tableName === "Hashtags") counts.hashtags = countQuery.count
-        if (tableName === "ReelsContent") counts.reels = countQuery.count
+        if (tableName === "Users") counts.users = countQuery.count;
+        if (tableName === "Projects") counts.projects = countQuery.count;
+        if (tableName === "Competitors") counts.competitors = countQuery.count;
+        if (tableName === "Hashtags") counts.hashtags = countQuery.count;
+        if (tableName === "ReelsContent") counts.reels = countQuery.count;
       }
 
       // Get first table data for display
       if (tables.length > 0) {
-        const firstTableName = tables[0].name
+        const firstTableName = tables[0].name;
         const rows = db
           .prepare(`SELECT * FROM ${firstTableName} LIMIT 10`)
-          .all()
+          .all();
 
         selectedTable = {
           name: firstTableName,
           columns: tables[0].columns,
           rows,
-        }
+        };
       }
 
-      db.close()
+      db.close();
     } catch (error: any) {
-      console.error("Error accessing SQLite database:", error)
+      console.error("Error accessing SQLite database:", error);
     }
   }
 
@@ -795,7 +795,7 @@ app.get("/", async (req, res) => {
   const moduleInfo = {
     version: "1.0.0", // This should be read from package.json
     mode: process.env.NODE_ENV || "development",
-  }
+  };
 
   // Render the dashboard
   res.render("dashboard", {
@@ -809,213 +809,193 @@ app.get("/", async (req, res) => {
     testResults,
     testLogs,
     logs,
-  })
-})
+  });
+});
 
 // API Endpoints
-app.post("/api/switch-db", (req, res) => {
+app.post("/api/switch-db", (_req, res) => {
   const currentDbType = process.env.NEON_DATABASE_URL?.startsWith("postgres")
     ? "Neon"
-    : "SQLite"
+    : "SQLite";
 
   if (currentDbType === "SQLite") {
     // Switch to Neon
-    process.env.NEON_DATABASE_URL = "postgres://your-neon-connection-string"
+    process.env.NEON_DATABASE_URL = "postgres://your-neon-connection-string";
   } else {
     // Switch to SQLite
-    process.env.NEON_DATABASE_URL = "sqlite:///.dev/sqlite.db"
+    process.env.NEON_DATABASE_URL = "sqlite:///.dev/sqlite.db";
   }
 
   // Update .env file
-  const envContent = `NEON_DATABASE_URL=${process.env.NEON_DATABASE_URL}\n`
-  fs.writeFileSync(path.join(ROOT_DIR, ".env.local"), envContent)
+  const envContent = `NEON_DATABASE_URL=${process.env.NEON_DATABASE_URL}\n`;
+  fs.writeFileSync(path.join(ROOT_DIR, ".env.local"), envContent);
 
-  res.json({ success: true })
-})
+  res.json({ success: true });
+});
 
-app.post("/api/reset-db", (req, res) => {
-  try {
-    // Delete SQLite database if it exists
-    if (fs.existsSync(SQLITE_DB_PATH)) {
-      fs.unlinkSync(SQLITE_DB_PATH)
-    }
-
-    // Run initialization script
-    exec(
-      `cd ${ROOT_DIR} && RESET_DB=true bun run scripts/init-dev-db.ts`,
-      (error, stdout, stderr) => {
-        if (error) {
-          console.error(`Error initializing database: ${error.message}`)
-          return res.json({ success: false, message: error.message })
-        }
-
-        res.json({ success: true })
-      }
-    )
-  } catch (error: any) {
-    res.json({ success: false, message: error.message })
-  }
-})
-
-app.post("/api/generate-test-data", (req, res) => {
-  try {
-    // Run initialization script
-    exec(
-      `cd ${ROOT_DIR} && bun run scripts/init-dev-db.ts`,
-      (error, stdout, stderr) => {
-        if (error) {
-          console.error(`Error generating test data: ${error.message}`)
-          return res.json({ success: false, message: error.message })
-        }
-
-        res.json({ success: true })
-      }
-    )
-  } catch (error: any) {
-    res.json({ success: false, message: error.message })
-  }
-})
-
-app.post("/api/run-build", (req, res) => {
-  try {
-    // Run build script
-    exec(
-      `cd ${ROOT_DIR} && bun run scripts/build-and-test.sh`,
-      (error, stdout, stderr) => {
-        if (error) {
-          console.error(`Error building module: ${error.message}`)
-          return res.json({ success: false, message: error.message })
-        }
-
-        res.json({ success: true })
-      }
-    )
-  } catch (error: any) {
-    res.json({ success: false, message: error.message })
-  }
-})
-
-app.post("/api/run-tests", (req, res) => {
-  try {
-    // Run tests
-    exec(`cd ${ROOT_DIR} && bun vitest run`, (error, stdout, stderr) => {
+app.post("/api/reset-db", (_req, res) => {
+  // This is a destructive operation, be careful
+  exec(
+    `rm -f ${SQLITE_DB_PATH} && bun run drizzle-kit:generate && bun run drizzle-kit:migrate`,
+    { cwd: ROOT_DIR },
+    (error, _stdout, _stderr) => {
       if (error) {
-        console.error(`Error running tests: ${error.message}`)
-        return res.json({ success: false, message: error.message })
+        console.error(`exec error: ${error}`);
+        res.status(500).send("Error resetting database");
+        return; // TS7030: Not all code paths return a value.
       }
+      res.send("Database reset successfully");
+      return; // TS7030: Not all code paths return a value.
+    }
+  );
+});
 
-      res.json({ success: true })
-    })
-  } catch (error: any) {
-    res.json({ success: false, message: error.message })
-  }
-})
-
-app.post("/api/run-unit-tests", (req, res) => {
-  try {
-    // Run unit tests
-    exec(
-      `cd ${ROOT_DIR} && bun vitest run __tests__/unit`,
-      (error, stdout, stderr) => {
-        if (error) {
-          console.error(`Error running unit tests: ${error.message}`)
-          return res.json({ success: false, message: error.message })
-        }
-
-        res.json({ success: true })
+app.post("/api/generate-test-data", (_req, res) => {
+  exec(
+    `cd ${ROOT_DIR} && bun run scripts/seed-db.ts`,
+    (error, _stdout, _stderr) => {
+      if (error) {
+        console.error(`exec error: ${error}`);
+        res.status(500).send("Error generating test data");
+        return; // TS7030: Not all code paths return a value.
       }
-    )
-  } catch (error: any) {
-    res.json({ success: false, message: error.message })
-  }
-})
+      res.send("Test data generated successfully");
+      return; // TS7030: Not all code paths return a value.
+    }
+  );
+});
 
-app.post("/api/run-integration-tests", (req, res) => {
-  try {
-    // Run integration tests
-    exec(
-      `cd ${ROOT_DIR} && bash scripts/test-integration.sh`,
-      (error, stdout, stderr) => {
-        if (error) {
-          console.error(`Error running integration tests: ${error.message}`)
-          return res.json({ success: false, message: error.message })
-        }
+app.post("/api/run-build", (_req, res) => {
+  exec(`cd ${ROOT_DIR} && bun run build`, (error, _stdout, _stderr) => {
+    if (error) {
+      console.error(`exec error: ${error}`);
+      res.status(500).send("Error running build");
+      return; // TS7030: Not all code paths return a value.
+    }
+    res.send("Build completed successfully");
+    return; // TS7030: Not all code paths return a value.
+  });
+});
 
-        res.json({ success: true })
+app.post("/api/run-tests", (_req, res) => {
+  // Consider running specific test suites if needed
+  exec(`cd ${ROOT_DIR} && bun vitest run`, (error, _stdout, _stderr) => {
+    if (error) {
+      console.error("Error running tests:", error);
+      // Send the error and stderr to the client for more detailed feedback
+      res.status(500).json({
+        message: "Error running tests",
+        error: error.message,
+        // stderr: stderr, // stderr might be useful
+      });
+      return; // TS7030: Not all code paths return a value.
+    }
+    // Send stdout to the client to display test results
+    res.json({
+      message: "Tests completed",
+      // output: stdout, // stdout contains the test results
+    });
+    return; // TS7030: Not all code paths return a value.
+  });
+});
+
+app.post("/api/run-unit-tests", (_req, res) => {
+  exec(
+    `cd ${ROOT_DIR} && bun vitest run src/__tests__/unit`,
+    (error, _stdout, _stderr) => {
+      if (error) {
+        console.error(`exec error: ${error}`);
+        res.status(500).send("Error running unit tests");
+        return; // TS7030: Not all code paths return a value.
       }
-    )
-  } catch (error: any) {
-    res.json({ success: false, message: error.message })
-  }
-})
+      res.send("Unit tests completed successfully");
+      return; // TS7030: Not all code paths return a value.
+    }
+  );
+});
 
-app.post("/api/test-mocks", (req, res) => {
-  // This would run a test of the mock service
-  res.json({ success: true })
-})
+app.post("/api/run-integration-tests", (_req, res) => {
+  exec(
+    `cd ${ROOT_DIR} && bun vitest run src/__tests__/integration`,
+    (error, _stdout, _stderr) => {
+      if (error) {
+        console.error(`exec error: ${error}`);
+        res.status(500).send("Error running integration tests");
+        return; // TS7030: Not all code paths return a value.
+      }
+      res.send("Integration tests completed successfully");
+      return; // TS7030: Not all code paths return a value.
+    }
+  );
+});
 
-app.get("/api/logs", (req, res) => {
-  const logFile = path.join(DEV_DIR, "dev.log")
+app.post("/api/test-mocks", (_req, res) => {
+  // This would be a placeholder for testing mock generation or specific mock behaviors
+  res.send("Mock testing logic not yet implemented.");
+});
 
-  if (fs.existsSync(logFile)) {
-    const logs = fs.readFileSync(logFile, "utf-8")
-    res.json({ success: true, data: logs })
+app.get("/api/logs", (_req, res) => {
+  // Read and return logs, e.g., from a log file or a logging service
+  // This is a simplified example, you might want to stream logs or paginate them
+  const logFilePath = path.join(DEV_DIR, "app.log"); // Example log file path
+  if (fs.existsSync(logFilePath)) {
+    const logs = fs.readFileSync(logFilePath, "utf-8");
+    res.json({ success: true, data: logs });
   } else {
-    res.json({ success: true, data: "No logs found" })
+    res.json({ success: true, data: "No logs found" });
   }
-})
+});
 
-app.post("/api/clear-logs", (req, res) => {
-  const logFile = path.join(DEV_DIR, "dev.log")
-
-  if (fs.existsSync(logFile)) {
-    fs.writeFileSync(logFile, "")
+app.post("/api/clear-logs", (_req, res) => {
+  // Logic to clear logs, e.g., truncate a log file
+  const logFilePath = path.join(DEV_DIR, "app.log"); // Example log file path
+  if (fs.existsSync(logFilePath)) {
+    fs.writeFileSync(logFilePath, "");
   }
-
-  res.json({ success: true })
-})
+  res.json({ success: true });
+});
 
 app.get("/api/table-data/:table", (req, res) => {
-  const tableName = req.params.table
+  const tableName = req.params.table;
 
   if (fs.existsSync(SQLITE_DB_PATH)) {
     try {
-      const db = new Database(SQLITE_DB_PATH)
+      const db = new Database(SQLITE_DB_PATH);
 
       // Get table columns
       const columnsQuery = db
         .prepare(`PRAGMA table_info(${tableName})`)
-        .all() as TableColumn[]
+        .all() as TableColumn[];
 
-      const columns = columnsQuery.map(col => ({
+      const columns = columnsQuery.map((col) => ({
         name: col.name,
         type: col.type,
-      }))
+      }));
 
       // Get table rows
-      const rows = db.prepare(`SELECT * FROM ${tableName} LIMIT 50`).all()
+      const rows = db.prepare(`SELECT * FROM ${tableName} LIMIT 50`).all();
 
-      db.close()
+      db.close();
 
       res.json({
         success: true,
         columns,
         rows,
-      })
+      });
     } catch (error: any) {
-      res.json({ success: false, message: error.message })
+      res.json({ success: false, message: error.message });
     }
   } else {
-    res.json({ success: false, message: "Database not found" })
+    res.json({ success: false, message: "Database not found" });
   }
-})
+});
 
 // Start server
 app.listen(PORT, () => {
   console.log(
     `✨ Instagram Scraper Bot - Панель Разработки запущена на http://localhost:${PORT}`
-  )
+  );
 
   // Open in browser
-  open(`http://localhost:${PORT}`)
-})
+  open(`http://localhost:${PORT}`);
+});
