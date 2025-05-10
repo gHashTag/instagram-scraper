@@ -2,10 +2,11 @@ module.exports = {
   apps: [
     {
       name: "drizzle-studio",
-      script: "bunx",
-      args: "drizzle-kit studio --port 3457",
+      script: "bun",
+      args: "run exec-drizzle-studio",
       watch: false,
       autorestart: false, // Обычно студию не нужно перезапускать автоматически
+      cwd: "./",
       env_development: {
         NODE_ENV: "development",
       },

@@ -1,6 +1,6 @@
 /// <reference types="vitest/globals" />
 
-import { beforeEach, afterEach, vi } from "vitest"
+import { beforeEach, afterEach, vi } from "vitest";
 
 // Создаем базовые моки
 export const telegrafMocks = {
@@ -15,7 +15,7 @@ export const telegrafMocks = {
     sendMessage: vi.fn(),
     setMyCommands: vi.fn(),
   },
-}
+};
 
 export const scenesMocks = {
   enter: vi.fn(),
@@ -24,13 +24,13 @@ export const scenesMocks = {
   action: vi.fn(),
   on: vi.fn(),
   emit: vi.fn(),
-}
+};
 
 // Создаем моки для Telegraf
-export const MockTelegraf = vi.fn().mockImplementation(() => telegrafMocks)
+export const MockTelegraf = vi.fn().mockImplementation(() => telegrafMocks);
 
 export const MockMarkup = {
-  inlineKeyboard: vi.fn().mockImplementation(buttons => ({
+  inlineKeyboard: vi.fn().mockImplementation((buttons) => ({
     reply_markup: { inline_keyboard: buttons },
   })),
   button: {
@@ -39,14 +39,14 @@ export const MockMarkup = {
       callback_data: data,
     })),
   },
-}
+};
 
 export const MockScenes = {
   BaseScene: vi.fn().mockImplementation(() => scenesMocks),
   Stage: vi.fn().mockImplementation(() => ({
     middleware: vi.fn(),
   })),
-}
+};
 
 // Мокируем функции скрапера
 export const scraperMocks = {
@@ -65,17 +65,17 @@ export const scraperMocks = {
       views_count: reel.viewCount,
       parsed_at: new Date(),
     })),
-}
+};
 
 // Настройка перед каждым тестом
 beforeEach(() => {
-  vi.clearAllMocks()
-})
+  vi.clearAllMocks();
+});
 
 // Очистка после каждого теста
 afterEach(() => {
-  vi.resetAllMocks()
-})
+  vi.resetAllMocks();
+});
 
 // Автоматически мокируем необходимые модули
 vi.mock("telegraf", async () => {
@@ -84,20 +84,20 @@ vi.mock("telegraf", async () => {
     Scenes: MockScenes,
     Markup: MockMarkup,
     session: vi.fn(),
-  }
-})
+  };
+});
 
 vi.mock("../agent", async () => {
   return {
     scrapeInstagramReels: scraperMocks.scrapeInstagramReels,
     convertToStorageReel: scraperMocks.convertToStorageReel,
-  }
-})
+  };
+});
 
 // Мокируем чтение .env файла
 vi.mock("dotenv", () => ({
   config: vi.fn(),
-}))
+}));
 
 // Мокируем telegraf
 vi.mock("telegraf", () => {
@@ -114,7 +114,7 @@ vi.mock("telegraf", () => {
       Stage: vi.fn().mockImplementation(() => ({
         register: vi.fn(),
       })),
-      BaseScene: vi.fn().mockImplementation(name => ({
+      BaseScene: vi.fn().mockImplementation((name) => ({
         name,
         enter: vi.fn(),
         leave: vi.fn(),
@@ -127,28 +127,28 @@ vi.mock("telegraf", () => {
     },
     session: vi.fn(),
     Markup: {
-      inlineKeyboard: buttons => ({
+      inlineKeyboard: (buttons: any) => ({
         reply_markup: { inline_keyboard: buttons },
       }),
-      keyboard: buttons => ({
+      keyboard: (buttons: any) => ({
         reply_markup: { keyboard: buttons, resize_keyboard: true },
       }),
       removeKeyboard: () => ({
         reply_markup: { remove_keyboard: true },
       }),
       button: {
-        callback: (text, data) => ({
+        callback: (text: any, data: any) => ({
           text,
           callback_data: data,
         }),
-        url: (text, url) => ({
+        url: (text: any, url: any) => ({
           text,
           url,
         }),
       },
     },
-  }
-})
+  };
+});
 
 // Мокируем подключение к Neon DB
 vi.mock("pg", () => {
@@ -161,8 +161,8 @@ vi.mock("pg", () => {
       }),
       end: vi.fn(),
     })),
-  }
-})
+  };
+});
 
 // Мокируем axios
 vi.mock("axios", () => ({
@@ -170,7 +170,8 @@ vi.mock("axios", () => ({
     get: vi.fn(),
     post: vi.fn(),
   },
-}))
+}));
 
 // Устанавливаем глобальную переменную для Neon
-global.__NEON_CONNECTION_STRING__ = "postgresql://fake:fake@fake.neon.tech/fake"
+(global as any).__NEON_CONNECTION_STRING__ =
+  "postgresql://fake:fake@fake.neon.tech/fake";

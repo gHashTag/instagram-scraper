@@ -5,7 +5,8 @@
  * без реальных API-запросов.
  */
 
-import { InstagramReel } from "@/storage/neonStorage-multitenant"
+import { InstagramReel } from "@/types";
+// import { InstagramReel } from "@/storage/neonStorage-multitenant" // Закомментировано
 
 // Моковые данные для тестирования
 const MOCK_REELS: Record<string, any[]> = {
@@ -79,59 +80,57 @@ const MOCK_REELS: Record<string, any[]> = {
       videoDuration: 90,
     },
   ],
-}
+};
 
 /**
  * Мок ApifyClient для тестирования
  */
 export class MockApifyClient {
-  private token: string
-
-  constructor(options: { token: string }) {
-    this.token = options.token
+  constructor() {
+    // Конструктор теперь пуст
   }
 
   actor(actorId: string) {
     if (actorId !== "apify/instagram-scraper") {
-      throw new Error(`Неизвестный актор: ${actorId}`)
+      throw new Error(`Неизвестный актор: ${actorId}`);
     }
 
     return {
       call: async (options: any) => {
-        const input = options.input || {}
+        const input = options.input || {};
 
         // Определяем тип данных для возврата на основе входных параметров
-        let dataKey = "competitor"
+        let dataKey = "competitor";
 
         if (input.hashtags && input.hashtags.length > 0) {
-          dataKey = `hashtag_${input.hashtags[0]}`
+          dataKey = `hashtag_${input.hashtags[0]}`;
         }
 
         // Симулируем задержку для реалистичности
-        await new Promise(resolve => setTimeout(resolve, 500))
+        await new Promise((resolve) => setTimeout(resolve, 500));
 
         // Возвращаем уникальный ID для датасета
         return {
           defaultDatasetId: `mock_dataset_${dataKey}`,
-        }
+        };
       },
-    }
+    };
   }
 
   dataset(datasetId: string) {
     return {
       listItems: async () => {
         // Извлекаем ключ из ID датасета
-        const dataKey = datasetId.replace("mock_dataset_", "")
+        const dataKey = datasetId.replace("mock_dataset_", "");
 
         // Симулируем задержку для реалистичности
-        await new Promise(resolve => setTimeout(resolve, 300))
+        await new Promise((resolve) => setTimeout(resolve, 300));
 
         return {
           items: MOCK_REELS[dataKey] || [],
-        }
+        };
       },
-    }
+    };
   }
 }
 
@@ -141,58 +140,61 @@ export class MockApifyClient {
 export async function mockScrapeInstagramReels(
   instagramUrl: string,
   options: {
-    apifyToken: string
-    minViews?: number
-    maxAgeDays?: number
-    limit?: number
+    apifyToken: string;
+    minViews?: number;
+    maxAgeDays?: number;
+    limit?: number;
   }
 ): Promise<InstagramReel[]> {
   // Определяем, запрашиваем ли мы данные хэштега или аккаунта
-  const isHashtag = instagramUrl.includes("#")
+  const isHashtag = instagramUrl.includes("#");
 
   // Определяем ключ для получения данных
-  let dataKey = "competitor"
+  let dataKey = "competitor";
 
   if (isHashtag) {
-    const hashtag = instagramUrl.replace("#", "").trim().toLowerCase()
-    dataKey = `hashtag_${hashtag}`
+    const hashtag = instagramUrl.replace("#", "").trim().toLowerCase();
+    dataKey = `hashtag_${hashtag}`;
   }
 
   // Получаем необработанные данные
-  const rawData = MOCK_REELS[dataKey] || []
+  const rawData = MOCK_REELS[dataKey] || [];
 
   // Применяем фильтры
-  const minViews = options.minViews || 50000
-  const maxAgeDays = options.maxAgeDays || 14
-  const limit = options.limit || 10
+  const minViews = options.minViews || 50000;
+  const maxAgeDays = options.maxAgeDays || 14;
+  const limit = options.limit || 10;
 
-  const maxAgeDate = new Date()
-  maxAgeDate.setDate(maxAgeDate.getDate() - maxAgeDays)
+  const maxAgeDate = new Date();
+  maxAgeDate.setDate(maxAgeDate.getDate() - maxAgeDays);
 
   // Фильтруем и преобразуем данные
   const filteredReels = rawData
-    .filter(item => {
+    .filter((item) => {
       // Проверяем, что это Reels
-      const isReel = item.type === "Video" && item.url.includes("/reel/")
+      const isReel = item.type === "Video" && item.url.includes("/reel/");
 
       // Проверяем дату
-      let passesDateFilter = true
+      let passesDateFilter = true;
       if (item.timestamp) {
-        const pubDate = new Date(item.timestamp)
-        passesDateFilter = pubDate >= maxAgeDate
+        const pubDate = new Date(item.timestamp);
+        passesDateFilter = pubDate >= maxAgeDate;
       }
 
       // Проверяем просмотры
-      let passesViewsFilter = true
+      let passesViewsFilter = true;
       if (minViews && item.viewCount) {
-        passesViewsFilter = item.viewCount >= minViews
+        passesViewsFilter = item.viewCount >= minViews;
       }
 
-      return isReel && passesDateFilter && passesViewsFilter
+      return isReel && passesDateFilter && passesViewsFilter;
     })
     .slice(0, limit)
-    .map(item => ({
-      reels_url: item.url,
+    .map((item) => ({
+      id:
+        item.url.split("/reel/")[1]?.replace("/", "") ||
+        `mock_id_${Math.random()}`,
+      url: item.url,
       publication_date: item.timestamp ? new Date(item.timestamp) : undefined,
       views_count: item.viewCount || undefined,
       likes_count: item.likesCount || undefined,
@@ -205,10 +207,10 @@ export async function mockScrapeInstagramReels(
       thumbnail_url: item.previewUrl || undefined,
       duration_seconds: item.videoDuration || undefined,
       raw_data: item,
-    }))
+    }));
 
   // Симулируем задержку для реалистичности
-  await new Promise(resolve => setTimeout(resolve, 800))
+  await new Promise((resolve) => setTimeout(resolve, 800));
 
-  return filteredReels
+  return filteredReels;
 }

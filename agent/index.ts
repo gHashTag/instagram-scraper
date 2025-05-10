@@ -7,20 +7,30 @@
  * - Преобразование данных для сохранения в базу данных
  */
 
+import {
+  initializeDBConnection,
+  closeDBConnection,
+  getOrCreateProject,
+  getOrCreateCompetitor,
+  saveMultipleReels,
+  ReelInsert, // Импортируем нужный тип
+} from "../src/db/neonDB" // Обновленный путь
+import { scrapeInstagramReels } from "./instagram-scraper" // Добавлен импорт
+
 // Экспорт функций скрапинга
 export { scrapeInstagramReels } from "./instagram-scraper"
 export type { ScrapeOptions } from "./instagram-scraper"
 
 // Экспорт функций работы с хранилищем данных
-export {
-  initializeNeonStorage,
-  closeNeonStorage,
-  createUser,
-  createProject,
-  addCompetitorAccount,
-  addTrackingHashtag,
-  saveReels,
-} from "../storage/neonStorage-multitenant"
+// export {
+//   initializeNeonStorage,
+//   closeNeonStorage,
+//   createUser,
+//   createProject,
+//   addCompetitorAccount,
+//   addTrackingHashtag,
+//   saveReels,
+// } from "../storage/neonStorage-multitenant"
 
 // Дополнительные типы, которые должны быть экспортированы
 export interface ContentSource {
@@ -42,6 +52,26 @@ export interface UserContentInteraction {
   notes?: string
   created_at?: Date
   updated_at?: Date
+}
+
+/**
+ * Тип для данных, возвращаемых из `scrapeInstagramReels`.
+ * Это сырые данные от Apify после первичной обработки в `instagram-scraper.ts`.
+ */
+export interface ApifyReelOutput {
+  reels_url?: string
+  publication_date?: Date
+  views_count?: number
+  likes_count?: number
+  comments_count?: number
+  description?: string
+  author_username?: string
+  author_id?: string
+  audio_title?: string
+  audio_artist?: string
+  thumbnail_url?: string
+  duration_seconds?: number
+  raw_data_apify?: any // Поле из старой версии, оставим опциональным для совместимости или для отладки
 }
 
 /**
@@ -77,4 +107,203 @@ export function convertToStorageReel(
     parsed_at: new Date(),
     updated_at: new Date(),
   }
+}
+
+/**
+ * Конвертирует "сырой" объект Reel из Apify (после первичной обработки в instagram-scraper.ts)
+ * в формат, ожидаемый функцией saveMultipleReels (Omit<ReelInsert, 'project_id' | ...>).
+ * @param rawApifyReel Объект Reel из Apify.
+ * @returns Объект Reel, готовый для сохранения в БД (без project_id, competitor_id, hashtag_id).
+ */
+function convertApifyReelToStorageFormat(
+  rawApifyReel: ApifyReelOutput
+): Omit<
+  ReelInsert,
+  "project_id" | "competitor_id" | "hashtag_id" | "parsed_at" | "updated_at"
+> {
+  return {
+    reel_url: rawApifyReel.reels_url!,
+    published_at: rawApifyReel.publication_date,
+    views_count: rawApifyReel.views_count,
+    likes_count: rawApifyReel.likes_count,
+    comments_count: rawApifyReel.comments_count,
+    description: rawApifyReel.description,
+    author_username: rawApifyReel.author_username,
+    audio_title: rawApifyReel.audio_title,
+    audio_artist: rawApifyReel.audio_artist,
+    thumbnail_url: rawApifyReel.thumbnail_url,
+  }
+}
+
+interface RunScraperAgentCycleOptions {
+  apifyToken: string
+  userAuthId: string
+  projectName: string
+  competitorUrls: string[]
+  hashtagNames?: string[] // Пока не используется в scrapeInstagramReels
+  minViews?: number
+  maxAgeDays?: number
+  scrapeLimitPerSource?: number
+}
+
+/**
+ * Основная оркестрирующая функция для запуска цикла Scraper Agent.
+ */
+export async function runScraperAgentCycle(
+  options: RunScraperAgentCycleOptions
+) {
+  console.log("Запуск цикла Scraper Agent...")
+  const {
+    apifyToken,
+    userAuthId,
+    projectName,
+    competitorUrls,
+    hashtagNames = [],
+    minViews = 50000,
+    maxAgeDays = 14,
+    scrapeLimitPerSource = 10,
+  } = options
+
+  if (!apifyToken) {
+    console.error("Apify токен не предоставлен! Завершение работы.")
+    return
+  }
+  if (!projectName) {
+    console.error("Имя проекта не предоставлено! Завершение работы.")
+    return
+  }
+  if (competitorUrls.length === 0 && hashtagNames.length === 0) {
+    console.warn(
+      "Не предоставлены URL конкурентов или хэштеги для скрапинга. Завершение работы."
+    )
+    return
+  }
+
+  try {
+    initializeDBConnection()
+    console.log(
+      `Получение или создание проекта: ${projectName} для пользователя ${userAuthId}`
+    )
+    const project = await getOrCreateProject(userAuthId, projectName)
+    if (!project || !project.id) {
+      console.error(
+        "Не удалось получить или создать проект. Завершение работы."
+      )
+      return
+    }
+    const projectId = project.id
+    console.log(`Проект ID: ${projectId}`)
+
+    // Скрапинг по конкурентам
+    for (const competitorUrl of competitorUrls) {
+      console.log(`Обработка конкурента: ${competitorUrl}`)
+      const competitor = await getOrCreateCompetitor(
+        projectId,
+        competitorUrl,
+        competitorUrl.split("/").filter(Boolean).pop()
+      )
+      if (!competitor || !competitor.id) {
+        console.error(
+          `Не удалось получить или создать конкурента для URL: ${competitorUrl}`
+        )
+        continue
+      }
+      const competitorId = competitor.id
+      console.log(`ID конкурента ${competitor.username}: ${competitorId}`)
+
+      try {
+        console.log(`Запуск скрапинга Reels для конкурента: ${competitorUrl}`)
+        const rawReelsFromApify = await scrapeInstagramReels(competitorUrl, {
+          apifyToken,
+          minViews,
+          maxAgeDays,
+          limit: scrapeLimitPerSource,
+        })
+
+        if (rawReelsFromApify && rawReelsFromApify.length > 0) {
+          console.log(
+            `Получено ${rawReelsFromApify.length} raw reels от Apify для ${competitorUrl}. Конвертация и сохранение...`
+          )
+          const reelsToSave = rawReelsFromApify
+            .filter((rawReel: ApifyReelOutput) => rawReel.reels_url)
+            .map((rawReel: ApifyReelOutput) =>
+              convertApifyReelToStorageFormat(rawReel)
+            )
+
+          if (reelsToSave.length > 0) {
+            await saveMultipleReels(
+              reelsToSave,
+              projectId,
+              competitorId,
+              undefined
+            )
+            console.log(
+              `Reels для конкурента ${competitorUrl} успешно обработаны и сохранены.`
+            )
+          } else {
+            console.log(
+              `Не найдено Reels с корректным URL для сохранения для ${competitorUrl}.`
+            )
+          }
+        } else {
+          console.log(
+            `Не найдено Reels для конкурента ${competitorUrl} или произошла ошибка скрапинга.`
+          )
+        }
+      } catch (scrapeError) {
+        console.error(
+          `Ошибка при скрапинге или сохранении Reels для конкурента ${competitorUrl}:`,
+          scrapeError
+        )
+      }
+      console.log("--- Следующий конкурент ---")
+    }
+
+    // TODO: Скрапинг по хэштегам (когда scrapeInstagramReels будет это поддерживать или будет отдельная функция)
+    // for (const hashtagName of hashtagNames) { ... }
+
+    console.log("Цикл Scraper Agent успешно завершен.")
+  } catch (error) {
+    console.error("Ошибка в основном цикле Scraper Agent:", error)
+  } finally {
+    await closeDBConnection()
+    console.log("Соединение с БД закрыто (или сброшен инстанс).")
+  }
+}
+
+// Пример использования (для локального тестирования):
+async function testRun() {
+  const apifyToken = process.env.APIFY_TOKEN // Убедитесь, что APIFY_TOKEN есть в .env.development
+  if (!apifyToken) {
+    console.error("Переменная окружения APIFY_TOKEN не установлена!")
+    return
+  }
+
+  console.log("Запускаем тестовый прогон Scraper Agent...")
+  await runScraperAgentCycle({
+    apifyToken: apifyToken,
+    userAuthId: "test-user-auth-id-123",
+    projectName: "Instagram Reels - Эстетика Тест",
+    competitorUrls: [
+      "https://www.instagram.com/clinicajoelleofficial",
+      // "https://www.instagram.com/kayaclinicarabia/" // Для теста пока один
+    ],
+    // hashtagNames: ["aestheticmedicine", "cosmetology"],
+    minViews: 1000, // Для теста снизим планку
+    maxAgeDays: 90, // Для теста расширим диапазон, чтобы точно что-то найти
+    scrapeLimitPerSource: 3, // Для теста меньше, чтобы не ждать долго
+  })
+  console.log("Тестовый прогон Scraper Agent завершен.")
+}
+
+// Запуск тестового прогона, если файл запускается напрямую
+// Это условие проверяет, был ли файл запущен напрямую (node agent/index.ts или tsx agent/index.ts)
+// а не импортирован как модуль.
+const mainModule = require.main
+if (mainModule && mainModule.filename === __filename) {
+  console.log("Файл agent/index.ts запущен напрямую, выполняем testRun()...")
+  testRun().catch(e => {
+    console.error("Ошибка во время тестового запуска агента:", e)
+    process.exit(1) // Выход с ошибкой
+  })
 }

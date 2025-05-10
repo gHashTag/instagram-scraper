@@ -1,5 +1,5 @@
-import { Markup } from "telegraf"
-import type { Project } from "@/types"
+import { Markup } from "telegraf";
+import type { Project } from "@/types"; // Раскомментировано и исправлен путь
 
 /**
  * Генерирует inline клавиатуру для списка проектов
@@ -11,22 +11,22 @@ export function generateProjectsKeyboard(projects: Project[]) {
     return Markup.inlineKeyboard([
       [Markup.button.callback("Создать проект", "create_project")],
       [Markup.button.callback("Выйти", "exit_scene")],
-    ])
+    ]);
   }
 
-  const projectButtons = projects.map(project => [
+  const projectButtons = projects.map((project) => [
     Markup.button.callback(
       `${project.name} (${project.is_active ? "Активен" : "Неактивен"})`,
       `project_${project.id}`
     ),
-  ])
+  ]);
 
   projectButtons.push([
     Markup.button.callback("Создать новый проект", "create_project"),
-  ])
-  projectButtons.push([Markup.button.callback("Выйти", "exit_scene")])
+  ]);
+  projectButtons.push([Markup.button.callback("Выйти", "exit_scene")]);
 
-  return Markup.inlineKeyboard(projectButtons)
+  return Markup.inlineKeyboard(projectButtons);
 }
 
 /**
@@ -51,7 +51,7 @@ export function generateProjectMenuKeyboard(projectId: number) {
     ],
     [Markup.button.callback("Просмотреть Reels", `show_reels_${projectId}`)],
     [Markup.button.callback("Назад к проектам", "back_to_projects")],
-  ])
+  ]);
 }
 
 /**
@@ -69,5 +69,5 @@ export function generateNewProjectKeyboard(projectId: number) {
       ),
     ],
     [Markup.button.callback("Добавить хэштег", `add_hashtag_${projectId}`)],
-  ])
+  ]);
 }

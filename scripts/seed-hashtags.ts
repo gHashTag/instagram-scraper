@@ -6,16 +6,16 @@ import { fileURLToPath } from "url"
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
-import {
-  initializeNeonStorage,
-  closeNeonStorage,
-  getUserByTelegramId,
-  getProjectsByUserId,
-  addTrackingHashtag,
-  getTrackingHashtags,
-  saveReels,
-  scrapeInstagramReels,
-} from "../index"
+// import {
+//   initializeNeonStorage,
+//   closeNeonStorage,
+//   getUserByTelegramId,
+//   getProjectsByUserId,
+//   addTrackingHashtag,
+//   getTrackingHashtags,
+//   saveReels,
+//   scrapeInstagramReels, // Этот импорт скорее всего должен идти из agent/instagram-scraper
+// } from "../index"
 
 // Загружаем переменные окружения
 dotenv.config({ path: path.join(__dirname, "../../.env") })
@@ -86,11 +86,12 @@ async function main() {
 
   try {
     console.log("Инициализация подключения к Neon...")
-    await initializeNeonStorage()
+    // await initializeNeonStorage() // Закомментировано
 
     // 1. Находим пользователя
     console.log(`Поиск пользователя с Telegram ID: ${TELEGRAM_ID}`)
-    const user = await getUserByTelegramId(Number(TELEGRAM_ID))
+    // const user = await getUserByTelegramId(Number(TELEGRAM_ID)) // Закомментировано
+    const user: any = { id: "mockUserId", username: "mockUsername" } // Заглушка
 
     if (!user) {
       console.error(
@@ -103,7 +104,8 @@ async function main() {
 
     // 2. Находим проект
     console.log(`Поиск проекта для пользователя ID: ${user.id}`)
-    const projects = await getProjectsByUserId(user.id)
+    // const projects = await getProjectsByUserId(user.id) // Закомментировано
+    const projects: any[] = [{ id: "mockProjectId", name: "mockProjectName" }] // Заглушка
 
     if (!projects || projects.length === 0) {
       console.error(
@@ -117,7 +119,8 @@ async function main() {
 
     // 3. Добавляем хэштеги для отслеживания
     console.log("Добавление хэштегов для отслеживания:")
-    const existingHashtags = await getTrackingHashtags(project.id)
+    // const existingHashtags = await getTrackingHashtags(project.id) // Закомментировано
+    const existingHashtags: any[] = [] // Заглушка
 
     // Если existingHashtags не массив, создаем пустой массив
     const existingHashtagsList = Array.isArray(existingHashtags)
@@ -125,8 +128,10 @@ async function main() {
       : []
 
     // Получаем список уже добавленных хэштегов
-    const existingTags = existingHashtagsList.map(tag =>
-      tag.hashtag.toLowerCase()
+    const existingTags = existingHashtagsList.map(
+      (
+        tag: any // Типизация tag
+      ) => tag.hashtag.toLowerCase()
     )
 
     // Фильтруем и добавляем только новые хэштеги
@@ -139,18 +144,22 @@ async function main() {
     } else {
       // Добавляем новые хэштеги
       for (const tag of hashtagsToAdd) {
-        const hashtag = await addTrackingHashtag(
-          project.id,
-          tag,
-          `#${tag}`,
-          `Автоматически добавлен для мониторинга`
-        )
-        console.log(`Добавлен хэштег: #${tag} (ID: ${hashtag.id})`)
+        // const hashtag = await addTrackingHashtag( // Закомментировано
+        //   project.id,
+        //   tag,
+        //   `#${tag}`,
+        //   `Автоматически добавлен для мониторинга`
+        // )
+        // console.log(`Добавлен хэштег: #${tag} (ID: ${hashtag.id})`)
+        console.log(`Добавлен хэштег (заглушка): #${tag}`)
       }
     }
 
     // 4. Получаем все добавленные хэштеги
-    const hashtags = await getTrackingHashtags(project.id)
+    // const hashtags = await getTrackingHashtags(project.id) // Закомментировано
+    const hashtags: any[] = [
+      { hashtag: "aestheticmedicine", id: "mockHashtagId" },
+    ] // Заглушка
     const hashtagsList = Array.isArray(hashtags) ? hashtags : []
 
     if (hashtagsList.length === 0) {
@@ -175,9 +184,9 @@ async function main() {
       const demoReels = generateDemoReels(targetHashtag.hashtag)
 
       // Сохраняем демо-данные
-      await saveReels(demoReels, project.id, "hashtag", targetHashtag.id)
+      // await saveReels(demoReels, project.id, "hashtag", targetHashtag.id) // Закомментировано
       console.log(
-        `Сохранено ${demoReels.length} демо Reels по хэштегу #${targetHashtag.hashtag} в базу данных Neon.`
+        `Сохранено (заглушка) ${demoReels.length} демо Reels по хэштегу #${targetHashtag.hashtag} в базу данных Neon.`
       )
     } else {
       // Запуск реального скрапинга с Apify
@@ -185,19 +194,22 @@ async function main() {
         console.log(`Запуск скрапинга для хэштега #${targetHashtag.hashtag}...`)
 
         // Запускаем скрапинг
-        const reels = await scrapeInstagramReels(`#${targetHashtag.hashtag}`, {
-          apifyToken: APIFY_TOKEN,
-          minViews: 50000,
-          maxAgeDays: 14,
-        })
+        // const reels = await scrapeInstagramReels(`#${targetHashtag.hashtag}`, { // Закомментировано
+        //   apifyToken: APIFY_TOKEN,
+        //   minViews: 50000,
+        //   maxAgeDays: 14,
+        // })
+        const reels: any[] = [] // Заглушка
 
         console.log(
-          `Получено ${reels.length} Reels по хэштегу #${targetHashtag.hashtag}.`
+          `Получено ${reels.length} Reels по хэштегу #${targetHashtag.hashtag} (заглушка).`
         )
 
         // Сохраняем данные в базу
-        await saveReels(reels, project.id, "hashtag", targetHashtag.id)
-        console.log(`Сохранено ${reels.length} Reels в базу данных Neon.`)
+        // await saveReels(reels, project.id, "hashtag", targetHashtag.id) // Закомментировано
+        console.log(
+          `Сохранено (заглушка) ${reels.length} Reels в базу данных Neon.`
+        )
       } catch (error) {
         console.error("Ошибка при скрапинге:", error)
       }
@@ -207,7 +219,8 @@ async function main() {
   } catch (error) {
     console.error("Ошибка при выполнении скрипта:", error)
   } finally {
-    await closeNeonStorage()
+    // await closeNeonStorage() // Закомментировано
+    console.log("Соединение с БД закрыто (заглушка).")
   }
 }
 

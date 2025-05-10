@@ -1,0 +1,51 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+### Neon Database Setup for Instagram Scraper Bot
+
+This rule provides quick access to IDs and connection strings for the Neon database used by the `instagram-scraper-bot` project. This helps avoid repeated lookups and ensures consistency.
+
+**Project Details:**
+
+*   **Neon Project Name:** `neuro-blogger`
+*   **Neon Project ID:** `sweet-lab-03119611`
+
+**Main Branch (Production Equivalent):**
+
+*   **Branch Name:** `main` (Typically, this is the default root branch)
+*   **Branch ID:** `br-super-boat-a5q1xwmy`
+*   **Connection String (Example - get fresh if needed):** `postgresql://neondb_owner:YOUR_PASSWORD@ep-still-paper-a54gdfzx-pooler.us-east-2.aws.neon.tech/neondb?sslmode=require` (This was the original one, likely for main)
+
+**Development Branch:**
+
+*   **Branch Name:** `develop`
+*   **Branch ID:** `br-noisy-tree-a51z10i8`
+*   **Connection String:** `postgresql://neondb_owner:npg_jwz8kFs0XVTe@ep-shy-truth-a5hat2dz-pooler.us-east-2.aws.neon.tech/neondb?sslmode=require`
+
+**Workflow:**
+
+1.  **`main` branch:** Represents the production database. Migrations are applied here after thorough testing on `develop`.
+2.  **`develop` branch:** Primary branch for new development.
+    *   Create feature branches from `develop`.
+    *   Merge completed features back into `develop`.
+    *   Test migrations and features thoroughly on the `develop` Neon branch.
+3.  **Feature branches (`feature/...`):** For isolated development of specific features. Create a corresponding Neon branch if isolated data testing is needed, or use the `develop` Neon branch.
+
+**Connecting Drizzle and Application:**
+
+*   Ensure your `.env` file's `DATABASE_URL` variable is set to the connection string of the **target Neon branch** you intend to work with.
+*   For `drizzle-kit` (migrations generation and application) and the application itself, this `DATABASE_URL` will determine which branch is affected.
+
+**Example `.env` for `develop` branch:**
+
+```env
+DATABASE_URL="postgresql://neondb_owner:npg_jwz8kFs0XVTe@ep-shy-truth-a5hat2dz-pooler.us-east-2.aws.neon.tech/neondb?sslmode=require"
+```
+
+**To get a fresh connection string for any branch (if needed):**
+
+Use the `mcp_Neon_get_connection_string` tool with the correct `projectId` and `branchId`.
+
+*Ом Шанти. Да пребудет порядок в наших данных и соединениях.*
