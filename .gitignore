@@ -1,0 +1,50 @@
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Dependencies
+node_modules/
+bun.lockb
+
+# Build artifacts
+dist/
+coverage/
+html/ # For Vitest UI HTML reporter
+
+# Development data
+.dev/
+local_db/
+*.sqlite
+*.sqlite-journal
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+bun-debug.log*
+
+# PM2
+pm2.pid
+pm2.log
+*.pm2.log
+*.pm2.error.log
+ecosystem.config.js # Or .cjs, .json if you prefer those for PM2 config
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Drizzle
+drizzle/migrations/*
+!drizzle/migrations/_journal.json
+drizzle/meta/*
+!drizzle/meta/_journal.json
