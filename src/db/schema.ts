@@ -9,7 +9,12 @@ import {
   jsonb,
   unique,
   uuid,
-} from "drizzle-orm/pg-core"
+} from "drizzle-orm/pg-core";
+
+export const testTable = pgTable("test_table", {
+  id: serial("id").primaryKey(),
+  name: text("name"),
+});
 
 export const usersTable = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -31,11 +36,11 @@ export const usersTable = pgTable("users", {
     .defaultNow()
     .notNull()
     .$onUpdate(() => new Date()),
-})
+});
 
 export const projectsTable = pgTable("projects", {
   id: serial("id").primaryKey(),
-  user_id: integer("user_id")
+  user_id: uuid("user_id")
     .notNull()
     .references(() => usersTable.id, { onDelete: "cascade" }),
   name: varchar("name", { length: 255 }).notNull(),
@@ -47,7 +52,7 @@ export const projectsTable = pgTable("projects", {
     .defaultNow()
     .notNull()
     .$onUpdate(() => new Date()),
-})
+});
 
 // New tables for Instagram Scraper Bot
 
@@ -71,15 +76,15 @@ export const competitorsTable = pgTable(
       .notNull()
       .$onUpdate(() => new Date()),
   },
-  table => {
+  (table) => {
     return {
       projectUsernameUnq: unique("project_username_unq").on(
         table.project_id,
         table.username
       ),
-    }
+    };
   }
-)
+);
 
 export const hashtagsTable = pgTable(
   "hashtags",
@@ -99,19 +104,19 @@ export const hashtagsTable = pgTable(
       .notNull()
       .$onUpdate(() => new Date()),
   },
-  table => {
+  (table) => {
     return {
       projectTagNameUnq: unique("project_tag_name_unq").on(
         table.project_id,
         table.tag_name
       ),
-    }
+    };
   }
-)
+);
 
 export const reelsTable = pgTable("reels", {
   id: serial("id").primaryKey(),
-  reel_url: text("reel_url").notNull().unique(),
+  reel_url: text("reel_url").unique(),
   project_id: integer("project_id")
     .notNull()
     .references(() => projectsTable.id, { onDelete: "cascade" }),
@@ -134,4 +139,27 @@ export const reelsTable = pgTable("reels", {
     .defaultNow()
     .notNull()
     .$onUpdate(() => new Date()),
-})
+});
+
+export const parsingRunsTable = pgTable("parsing_runs", {
+  id: serial("id").primaryKey(),
+  run_id: uuid("run_id").notNull().unique(),
+  project_id: integer("project_id").references(() => projectsTable.id, {
+    onDelete: "set null",
+  }), // или cascade, если нужно удалять логи при удалении проекта
+  source_type: varchar("source_type", { length: 50 }), // e.g., 'competitor', 'hashtag', 'overall'
+  source_id: integer("source_id"), // FK to competitorsTable.id or hashtagsTable.id, or null if 'overall'
+  status: varchar("status", { length: 50 }).notNull(), // e.g., 'started', 'running', 'completed', 'failed'
+  started_at: timestamp("started_at").defaultNow().notNull(),
+  ended_at: timestamp("ended_at"),
+  reels_found_count: integer("reels_found_count").default(0).notNull(),
+  reels_added_count: integer("reels_added_count").default(0).notNull(),
+  errors_count: integer("errors_count").default(0).notNull(),
+  log_message: text("log_message"),
+  error_details: jsonb("error_details"),
+  created_at: timestamp("created_at").defaultNow().notNull(),
+  updated_at: timestamp("updated_at")
+    .defaultNow()
+    .notNull()
+    .$onUpdate(() => new Date()),
+});

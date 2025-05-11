@@ -1,13 +1,18 @@
-import { defineConfig } from "vitest/config"
-import path from "path"
+import { defineConfig } from "vitest/config";
+import path from "path";
 
 export default defineConfig({
   test: {
     globals: true,
     environment: "node",
-    setupFiles: ["./__tests__/setup-env.js"],
+    setupFiles: ["./setup-env.js"],
     include: ["./__tests__/**/*.test.ts"],
-    exclude: ["**/node_modules/**", "**/dist/**"],
+    exclude: [
+      "**/node_modules/**",
+      "**/dist/**",
+      "**/.{idea,git,cache,output,temp}/**",
+      "**/{karma,rollup,webpack,vite,vitest,jest,ava,babel,nyc,cypress,tsup,build,eslint,prettier}.config.*",
+    ],
     clearMocks: true,
     mockReset: true,
     reporters: ["default", "html"],
@@ -18,4 +23,4 @@ export default defineConfig({
       "@": path.resolve(__dirname),
     },
   },
-})
+});

@@ -15,13 +15,16 @@
     "db:generate-node": "dotenv -e .env.development -- node ./node_modules/.bin/drizzle-kit generate",
     "db:push": "bunx drizzle-kit push",
     "db:push-direct": "bunx drizzle-kit push",
-    "db:push-node": "dotenv -e .env.development -- node ./node_modules/.bin/drizzle-kit push",
+    "db:push-node": "dotenv -e .env.development -- node --import=tsx ./node_modules/.bin/drizzle-kit push",
     "db:migrate-node": "dotenv -e .env.development -- node ./node_modules/.bin/drizzle-kit migrate",
-    "exec-drizzle-studio": "dotenv -e .env.development -- bunx drizzle-kit studio --port 3457",
+    "exec-drizzle-studio": "dotenv -e .env.development -- bunx drizzle-kit studio --port 3458",
     "agent:test-run": "dotenv -e .env.development -- tsx agent/index.ts",
     "test": "bun run scripts/build-and-test.sh",
     "test:ui": "bunx vitest --ui",
-    "test:integration": "bun run scripts/test-integration.sh"
+    "test:integration": "bun run scripts/test-integration.sh",
+    "typecheck": "bun --bun exec tsc --noEmit",
+    "dev:dashboard": "tsx scripts/dev-dashboard.ts",
+    "db:seed": "dotenv -e .env.development -- tsx scripts/seed-database.ts"
   },
   "keywords": [
     "instagram",

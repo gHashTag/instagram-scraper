@@ -38,7 +38,7 @@ This rule provides quick access to IDs and connection strings for the Neon datab
 *   Ensure your `.env` file's `DATABASE_URL` variable is set to the connection string of the **target Neon branch** you intend to work with.
 *   For `drizzle-kit` (migrations generation and application) and the application itself, this `DATABASE_URL` will determine which branch is affected.
 
-**Example `.env` for `develop` branch:**
+**Example `.env.development` for `develop` branch:**
 
 ```env
 DATABASE_URL="postgresql://neondb_owner:npg_jwz8kFs0XVTe@ep-shy-truth-a5hat2dz-pooler.us-east-2.aws.neon.tech/neondb?sslmode=require"

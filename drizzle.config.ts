@@ -1,26 +1,29 @@
-import { defineConfig } from "drizzle-kit"
-import dotenv from "dotenv"
-import path from "path"
-import fs from "fs" // Import fs to check for file existence
+import { defineConfig } from "drizzle-kit";
+// import dotenv from "dotenv" // Убрали, так как загрузка идет через dotenv-cli
+// import path from "path"    // Убрали
+// import fs from "fs"        // Убрали
 
-// Determine which .env file to load
-const envDevelopmentPath = path.resolve(process.cwd(), ".env.development")
-const envPath = path.resolve(process.cwd(), ".env")
+// // Determine which .env file to load
+// const envDevelopmentPath = path.resolve(process.cwd(), ".env.development")
+// const envPath = path.resolve(process.cwd(), ".env")
 
-if (fs.existsSync(envDevelopmentPath)) {
-  dotenv.config({ path: envDevelopmentPath })
-} else {
-  dotenv.config({ path: envPath })
-}
+// if (fs.existsSync(envDevelopmentPath)) {
+//   dotenv.config({ path: envDevelopmentPath })
+// } else {
+//   dotenv.config({ path: envPath })
+// }
 
-// Debug: Log DATABASE_URL to check if it's loaded
-// console.log("DATABASE_URL (in drizzle.config.ts):", process.env.DATABASE_URL)
-// console.log("Attempting to load .env from:", fs.existsSync(envDevelopmentPath) ? envDevelopmentPath : envPath)
+// Важно: теперь мы ожидаем, что DATABASE_URL установлен ВНЕ этого файла,
+// например, командой "dotenv -e .env.development -- node ..."
+console.log(
+  "DATABASE_URL (внутри drizzle.config.ts, после удаления внутреннего dotenv):",
+  process.env.DATABASE_URL
+);
 
 if (!process.env.DATABASE_URL) {
   throw new Error(
-    "DATABASE_URL environment variable is not set for drizzle-kit"
-  )
+    "DATABASE_URL environment variable is not set or not passed to drizzle-kit. Ensure dotenv-cli or similar sets it."
+  );
 }
 
 export default defineConfig({
@@ -33,4 +36,4 @@ export default defineConfig({
   schemaFilter: ["public"], // Explicitly specify the schema to use
   verbose: true,
   strict: true,
-})
+});

@@ -7,19 +7,9 @@
  * - Преобразование данных для сохранения в базу данных
  */
 
-import {
-  initializeDBConnection,
-  closeDBConnection,
-  getOrCreateProject,
-  getOrCreateCompetitor,
-  saveMultipleReels,
-  ReelInsert, // Импортируем нужный тип
-} from "../src/db/neonDB" // Обновленный путь
-import { scrapeInstagramReels } from "./instagram-scraper" // Добавлен импорт
-
 // Экспорт функций скрапинга
-export { scrapeInstagramReels } from "./instagram-scraper"
-export type { ScrapeOptions } from "./instagram-scraper"
+export { scrapeInstagramReels } from "./instagram-scraper";
+export type { ScrapeOptions } from "./instagram-scraper";
 
 // Экспорт функций работы с хранилищем данных
 // export {
@@ -34,24 +24,24 @@ export type { ScrapeOptions } from "./instagram-scraper"
 
 // Дополнительные типы, которые должны быть экспортированы
 export interface ContentSource {
-  id: number
-  reels_id: number
-  source_type: "competitor" | "hashtag"
-  competitor_id?: number
-  hashtag_id?: number
-  project_id: number
-  created_at?: Date
+  id: number;
+  reels_id: number;
+  source_type: "competitor" | "hashtag";
+  competitor_id?: number;
+  hashtag_id?: number;
+  project_id: number;
+  created_at?: Date;
 }
 
 export interface UserContentInteraction {
-  id: number
-  user_id: number
-  reels_id: number
-  is_favorite?: boolean
-  is_hidden?: boolean
-  notes?: string
-  created_at?: Date
-  updated_at?: Date
+  id: number;
+  user_id: number;
+  reels_id: number;
+  is_favorite?: boolean;
+  is_hidden?: boolean;
+  notes?: string;
+  created_at?: Date;
+  updated_at?: Date;
 }
 
 /**
@@ -59,19 +49,19 @@ export interface UserContentInteraction {
  * Это сырые данные от Apify после первичной обработки в `instagram-scraper.ts`.
  */
 export interface ApifyReelOutput {
-  reels_url?: string
-  publication_date?: Date
-  views_count?: number
-  likes_count?: number
-  comments_count?: number
-  description?: string
-  author_username?: string
-  author_id?: string
-  audio_title?: string
-  audio_artist?: string
-  thumbnail_url?: string
-  duration_seconds?: number
-  raw_data_apify?: any // Поле из старой версии, оставим опциональным для совместимости или для отладки
+  reels_url?: string;
+  publication_date?: Date;
+  views_count?: number;
+  likes_count?: number;
+  comments_count?: number;
+  description?: string;
+  author_username?: string;
+  author_id?: string;
+  audio_title?: string;
+  audio_artist?: string;
+  thumbnail_url?: string;
+  duration_seconds?: number;
+  raw_data_apify?: any; // Поле из старой версии, оставим опциональным для совместимости или для отладки
 }
 
 /**
@@ -106,44 +96,18 @@ export function convertToStorageReel(
     audio_artist: reelRaw.audioArtist,
     parsed_at: new Date(),
     updated_at: new Date(),
-  }
-}
-
-/**
- * Конвертирует "сырой" объект Reel из Apify (после первичной обработки в instagram-scraper.ts)
- * в формат, ожидаемый функцией saveMultipleReels (Omit<ReelInsert, 'project_id' | ...>).
- * @param rawApifyReel Объект Reel из Apify.
- * @returns Объект Reel, готовый для сохранения в БД (без project_id, competitor_id, hashtag_id).
- */
-function convertApifyReelToStorageFormat(
-  rawApifyReel: ApifyReelOutput
-): Omit<
-  ReelInsert,
-  "project_id" | "competitor_id" | "hashtag_id" | "parsed_at" | "updated_at"
-> {
-  return {
-    reel_url: rawApifyReel.reels_url!,
-    published_at: rawApifyReel.publication_date,
-    views_count: rawApifyReel.views_count,
-    likes_count: rawApifyReel.likes_count,
-    comments_count: rawApifyReel.comments_count,
-    description: rawApifyReel.description,
-    author_username: rawApifyReel.author_username,
-    audio_title: rawApifyReel.audio_title,
-    audio_artist: rawApifyReel.audio_artist,
-    thumbnail_url: rawApifyReel.thumbnail_url,
-  }
+  };
 }
 
 interface RunScraperAgentCycleOptions {
-  apifyToken: string
-  userAuthId: string
-  projectName: string
-  competitorUrls: string[]
-  hashtagNames?: string[] // Пока не используется в scrapeInstagramReels
-  minViews?: number
-  maxAgeDays?: number
-  scrapeLimitPerSource?: number
+  apifyToken: string;
+  userAuthId: string;
+  projectName: string;
+  competitorUrls: string[];
+  hashtagNames?: string[]; // Пока не используется в scrapeInstagramReels
+  minViews?: number;
+  maxAgeDays?: number;
+  scrapeLimitPerSource?: number;
 }
 
 /**
@@ -152,6 +116,7 @@ interface RunScraperAgentCycleOptions {
 export async function runScraperAgentCycle(
   options: RunScraperAgentCycleOptions
 ) {
+  /* // ЗАКОММЕНТИРОВАНО УСТАРЕВШЕЕ ТЕЛО ФУНКЦИИ
   console.log("Запуск цикла Scraper Agent...")
   const {
     apifyToken,
@@ -269,19 +234,23 @@ export async function runScraperAgentCycle(
     await closeDBConnection()
     console.log("Соединение с БД закрыто (или сброшен инстанс).")
   }
+  */
+  // КОНЕЦ ЗАКОММЕНТИРОВАННОГО БЛОКА
+  if (options) {
+    console.log(
+      "runScraperAgentCycle called with options:",
+      options.projectName
+    ); // Пример использования
+  }
 }
 
-// Пример использования (для локального тестирования):
+/**
+ * Функция для тестирования (можно удалить или обновить)
+ */
 async function testRun() {
-  const apifyToken = process.env.APIFY_TOKEN // Убедитесь, что APIFY_TOKEN есть в .env.development
-  if (!apifyToken) {
-    console.error("Переменная окружения APIFY_TOKEN не установлена!")
-    return
-  }
-
-  console.log("Запускаем тестовый прогон Scraper Agent...")
-  await runScraperAgentCycle({
-    apifyToken: apifyToken,
+  /* // ЗАКОММЕНТИРОВАНО УСТАРЕВШЕЕ ТЕЛО ФУНКЦИИ
+  const testOptions: RunScraperAgentCycleOptions = {
+    apifyToken: process.env.APIFY_TOKEN || "", // Убедитесь, что токен есть в .env
     userAuthId: "test-user-auth-id-123",
     projectName: "Instagram Reels - Эстетика Тест",
     competitorUrls: [
@@ -292,18 +261,23 @@ async function testRun() {
     minViews: 1000, // Для теста снизим планку
     maxAgeDays: 90, // Для теста расширим диапазон, чтобы точно что-то найти
     scrapeLimitPerSource: 3, // Для теста меньше, чтобы не ждать долго
-  })
-  console.log("Тестовый прогон Scraper Agent завершен.")
+  }
+
+  await runScraperAgentCycle(testOptions)
+  */
+  // КОНЕЦ ЗАКОММЕНТИРОВАННОГО БЛОКА
 }
+
+// testRun(); // Убедимся, что тестовый запуск тоже закомментирован
 
 // Запуск тестового прогона, если файл запускается напрямую
 // Это условие проверяет, был ли файл запущен напрямую (node agent/index.ts или tsx agent/index.ts)
 // а не импортирован как модуль.
-const mainModule = require.main
+const mainModule = require.main;
 if (mainModule && mainModule.filename === __filename) {
-  console.log("Файл agent/index.ts запущен напрямую, выполняем testRun()...")
-  testRun().catch(e => {
-    console.error("Ошибка во время тестового запуска агента:", e)
-    process.exit(1) // Выход с ошибкой
-  })
+  console.log("Файл agent/index.ts запущен напрямую, выполняем testRun()...");
+  testRun().catch((e) => {
+    console.error("Ошибка во время тестового запуска агента:", e);
+    process.exit(1); // Выход с ошибкой
+  });
 }

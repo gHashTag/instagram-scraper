@@ -1,30 +1,15 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import {
   generateProjectsKeyboard,
   generateProjectMenuKeyboard,
   generateNewProjectKeyboard,
 } from "../../../scenes/components/project-keyboard";
 
-// Мокируем Markup из Telegraf
-vi.mock("telegraf", () => {
-  return {
-    Markup: {
-      inlineKeyboard: (buttons: any) => ({
-        reply_markup: { inline_keyboard: buttons },
-      }),
-      button: {
-        callback: (text: any, data: any) => ({
-          text,
-          callback_data: data,
-        }),
-        url: (text: any, url: any) => ({
-          text,
-          url,
-        }),
-      },
-    },
-  };
-});
+// Комментируем неиспользуемую константу Markup
+// const Markup = {
+//   keyboard: vi.fn(),
+//   inlineKeyboard: vi.fn(),
+// };
 
 // Импортируем наш модуль для тестирования
 import "../../setup";
