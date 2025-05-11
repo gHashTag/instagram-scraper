@@ -1,10 +1,5 @@
 import { ApifyClient } from "apify-client";
-import {
-  NeonDB,
-  ReelInsert,
-  saveReel,
-  checkReelExists,
-} from "../src/db/neonDB";
+import { NeonDB, ReelInsert, saveReel, checkReelExists } from "../db/neonDB";
 
 // Интерфейс для опций скрапинга
 export interface ScrapeOptions {

@@ -1,7 +1,7 @@
 import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
-import { NeonAdapter } from "../adapters/neon-adapter";
+import { NeonAdapter } from "../src/adapters/neon-adapter";
 
 // Получаем dirname для ES модулей
 const __filename = fileURLToPath(import.meta.url);

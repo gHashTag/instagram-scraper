@@ -6,8 +6,8 @@
  */
 
 import { Telegraf, Scenes } from "telegraf";
-import { competitorScene } from "./scenes/competitor-scene";
-import { projectScene } from "./scenes/project-scene";
+import { competitorScene } from "./src/scenes/competitor-scene";
+import { projectScene } from "./src/scenes/project-scene";
 import type { Middleware } from "telegraf";
 import type {
   StorageAdapter,
@@ -123,3 +123,9 @@ export function setupInstagramScraperBot(
     ],
   };
 }
+
+// Установка обработчика ошибок
+// bot.catch((err: any, ctx: ScraperBotContext) => {
+//   logger.error(`Ooops, encountered an error for ${ctx.updateType}`, err);
+//   ctx.reply("Упс, что-то пошло не так. Попробуйте еще раз позже.");
+// });

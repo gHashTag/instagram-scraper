@@ -3,7 +3,7 @@ import {
   generateProjectsKeyboard,
   generateProjectMenuKeyboard,
   generateNewProjectKeyboard,
-} from "../../../scenes/components/project-keyboard";
+} from "../../../src/scenes/components/project-keyboard";
 
 // Комментируем неиспользуемую константу Markup
 // const Markup = {

@@ -18,7 +18,7 @@ import {
   ParsingRunInsert,
   getDB,
 } from "../src/db/neonDB"; // Путь к функциям и типам БД
-import { scrapeInstagramReels } from "../agent"; // scrapeInstagramReels из agent/index.ts -> agent/instagram-scraper.ts
+import { scrapeInstagramReels } from "../src/agent"; // scrapeInstagramReels из agent/index.ts -> agent/instagram-scraper.ts
 
 // Добавляем необходимые импорты для нового типа db
 import { drizzle } from "drizzle-orm/neon-http";
