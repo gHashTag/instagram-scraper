@@ -3,6 +3,8 @@ import {
   ScraperBotContext,
   ScraperSceneStep,
   ScraperSceneSessionData,
+  // Убедимся, что StorageAdapter импортирован, если он используется для приведения типа
+  // StorageAdapter,
 } from "@/types";
 import { generateProjectsKeyboard } from "./components/project-keyboard";
 import {
@@ -10,7 +12,11 @@ import {
   generateNewProjectKeyboard,
 } from "./components/project-keyboard";
 
-// ИМПОРТИРУЕМ NeonAdapter
+// УДАЛЯЕМ ИМПОРТ И СОЗДАНИЕ ЭКЗЕМПЛЯРА NeonAdapter НА УРОВНЕ МОДУЛЯ
+// import { NeonAdapter } from "../adapters/neon-adapter";
+// const neonAdapter = new NeonAdapter();
+
+// Для ясности, что мы ожидаем NeonAdapter в ctx.storage
 import { NeonAdapter } from "../adapters/neon-adapter";
 
 /**
@@ -20,26 +26,29 @@ export const projectScene = new Scenes.BaseScene<
   ScraperBotContext & { scene: { session: ScraperSceneSessionData } }
 >("instagram_scraper_projects");
 
-// СОЗДАЕМ ЭКЗЕМПЛЯР АДАПТЕРА
-const neonAdapter = new NeonAdapter();
-
 // Вход в сцену - показываем список проектов
 projectScene.enter(async (ctx) => {
-  try {
-    // Используем neonAdapter
-    await neonAdapter.initialize();
+  // Используем адаптер из контекста
+  const adapter = ctx.storage as NeonAdapter; // Приводим к NeonAdapter
+  if (!adapter) {
+    await ctx.reply("Ошибка: Адаптер хранилища не найден в контексте.");
+    return ctx.scene.leave();
+  }
 
-    const user = await neonAdapter.getUserByTelegramId(ctx.from?.id || 0);
+  try {
+    await adapter.initialize(); // Вызываем initialize на адаптере из контекста
+
+    const user = await adapter.getUserByTelegramId(ctx.from?.id || 0);
 
     if (!user) {
       await ctx.reply(
         "Вы не зарегистрированы. Пожалуйста, используйте сначала основные команды бота."
       );
-      await neonAdapter.close();
+      // await adapter.close(); // Решение о close должно быть консистентным
       return ctx.scene.leave();
     }
 
-    const projects = await neonAdapter.getProjectsByUserId(user.id as number); // Приведение типа
+    const projects = await adapter.getProjectsByUserId(user.id as number);
 
     await ctx.reply(
       projects && projects.length > 0
@@ -50,13 +59,13 @@ projectScene.enter(async (ctx) => {
       }
     );
 
-    await neonAdapter.close();
+    // await adapter.close(); // Решение о close должно быть консистентным
   } catch (error) {
     console.error("Ошибка при получении проектов:", error);
     await ctx.reply(
       "Произошла ошибка при получении проектов. Пожалуйста, попробуйте позже."
     );
-    // neonAdapter.close(); // Уже закрывается в try или не должен если ошибка не связана с ним
+    // await adapter.close();
     await ctx.scene.leave();
   }
 });
@@ -76,22 +85,26 @@ projectScene.action("create_project", async (ctx) => {
   await ctx.reply(
     "Введите название нового проекта (например, 'Мой косметологический центр'):"
   );
-  // Устанавливаем следующий шаг - ожидание ввода названия проекта
   ctx.scene.session.step = ScraperSceneStep.ADD_PROJECT;
 });
 
 // Обработка текстовых сообщений
 projectScene.on("text", async (ctx) => {
-  // Обработка шага создания проекта
+  const adapter = ctx.storage as NeonAdapter;
+  if (!adapter) {
+    await ctx.reply("Ошибка: Адаптер хранилища не найден в контексте.");
+    // Не выходим из сцены, чтобы пользователь мог попробовать еще раз или выйти командой
+    return;
+  }
+
   if (ctx.scene.session.step === ScraperSceneStep.ADD_PROJECT) {
     try {
-      // Используем neonAdapter
-      await neonAdapter.initialize();
+      await adapter.initialize();
 
-      const user = await neonAdapter.getUserByTelegramId(ctx.from.id);
+      const user = await adapter.getUserByTelegramId(ctx.from.id);
       if (!user) {
         await ctx.reply("Ошибка: пользователь не найден.");
-        await neonAdapter.close();
+        // await adapter.close();
         return ctx.scene.leave();
       }
 
@@ -100,13 +113,13 @@ projectScene.on("text", async (ctx) => {
         await ctx.reply(
           "Название проекта должно содержать не менее 3 символов. Попробуйте еще раз:"
         );
-        return; // Не закрываем адаптер, т.к. пользователь может попробовать еще раз
+        return;
       }
 
-      const project = await neonAdapter.createProject(
+      const project = await adapter.createProject(
         user.id as number,
         projectName
-      ); // Приведение типа
+      );
 
       if (project) {
         await ctx.reply(`Проект "${projectName}" успешно создан!`, {
@@ -115,16 +128,13 @@ projectScene.on("text", async (ctx) => {
       } else {
         await ctx.reply("Ошибка при создании проекта. Попробуйте позже.");
       }
-
-      // Сбрасываем шаг
       ctx.scene.session.step = undefined;
-      await neonAdapter.close();
+      // await adapter.close();
     } catch (error) {
       console.error("Ошибка при создании проекта:", error);
       await ctx.reply(
         "Произошла ошибка при создании проекта. Пожалуйста, попробуйте позже."
       );
-      // neonAdapter.close(); // Если ошибка, возможно, не стоит закрывать, или в finally
     }
   } else {
     await ctx.reply(
@@ -141,14 +151,18 @@ projectScene.action("back_to_projects", async (ctx) => {
 
 // Обработка выбора проекта
 projectScene.action(/project_(\d+)/, async (ctx) => {
+  const adapter = ctx.storage as NeonAdapter;
+  if (!adapter) {
+    await ctx.reply("Ошибка: Адаптер хранилища не найден в контексте.");
+    return;
+  }
+
   const projectId = parseInt(ctx.match[1]);
   await ctx.answerCbQuery();
 
   try {
-    // Используем neonAdapter
-    await neonAdapter.initialize();
-
-    const project = await neonAdapter.getProjectById(projectId);
+    await adapter.initialize();
+    const project = await adapter.getProjectById(projectId);
 
     if (project) {
       await ctx.reply(`Проект "${project.name}". Выберите действие:`, {
@@ -156,16 +170,14 @@ projectScene.action(/project_(\d+)/, async (ctx) => {
       });
     } else {
       await ctx.reply("Проект не найден. Возможно, он был удален.");
-      await ctx.scene.reenter(); // Re-enter покажет обновленный список или сообщение об отсутствии проектов
+      await ctx.scene.reenter();
     }
-
-    await neonAdapter.close();
+    // await adapter.close();
   } catch (error) {
     console.error(`Ошибка при получении проекта ${projectId}:`, error);
     await ctx.reply(
       "Произошла ошибка при получении данных проекта. Пожалуйста, попробуйте позже."
     );
-    // neonAdapter.close();
   }
 });
 
