@@ -14,7 +14,11 @@ import {
   ScraperSceneStep,
   ScraperBotContext,
 } from "../../../src/types";
-import { generateProjectsKeyboard } from "../../../src/scenes/components/project-keyboard";
+import {
+  generateProjectsKeyboard,
+  generateProjectMenuKeyboard,
+  generateNewProjectKeyboard,
+} from "../../../src/scenes/components/project-keyboard";
 
 // Определение кастомного типа контекста для тестов
 // Расширяем ScraperBotContext, делая storage обязательным и добавляя моки для reply/answerCbQuery
@@ -744,6 +748,653 @@ describe("Project Scene NEW (Dependency Injection - Full Replace)", () => {
 
       expect(localCtx.answerCbQuery).toHaveBeenCalled();
       expect(mockSceneReenter).toHaveBeenCalled();
+    });
+
+    it("should handle 'project_(\d+)' action (select project)", async () => {
+      const projectId = 123; // Пример ID проекта
+      const localMockTelegram = {
+        sendMessage: jest.fn().mockResolvedValue({} as Message.TextMessage),
+        answerCbQuery: jest.fn().mockResolvedValue(true),
+      } as unknown as Telegram;
+
+      const localBotInfo: UserFromGetMe = {
+        id: 1,
+        is_bot: true as const,
+        first_name: "TestBot",
+        username: "TestBot",
+        can_join_groups: true,
+        can_read_all_group_messages: true,
+        supports_inline_queries: true,
+      };
+
+      const localUpdate: Update.CallbackQueryUpdate = {
+        update_id: 1,
+        callback_query: {
+          id: "test_callback_id_project_select",
+          from: {
+            id: 123,
+            is_bot: false,
+            first_name: "TestUser",
+            username: "TestUser",
+          },
+          message: {
+            message_id: 1,
+            chat: {
+              id: 123,
+              type: "private",
+              first_name: "TestUser",
+              username: "TestUser",
+            },
+            date: Math.floor(Date.now() / 1000),
+            text: "Сообщение с выбором проекта",
+          },
+          chat_instance: "test_chat_instance_project_select",
+          data: `project_${projectId}`,
+        },
+      };
+
+      let localCtx = new Context(
+        localUpdate,
+        localMockTelegram,
+        localBotInfo
+      ) as TestScraperBotContext;
+      localCtx.storage = {
+        initialize: jest.fn(),
+        // Мок getProjectById, так как сцена может захотеть проверить существование проекта
+        getProjectById: jest.fn().mockResolvedValue({
+          id: projectId,
+          name: "Тестовый Проект",
+          user_id: 1,
+          created_at: new Date().toISOString(),
+          is_active: true,
+        } as Project),
+      } as any;
+      localCtx.reply = jest.fn().mockResolvedValue({} as Message.TextMessage);
+      localCtx.answerCbQuery = jest.fn().mockResolvedValue(true) as jest.Mock<
+        (text?: string, extra?: any) => Promise<true>
+      >;
+
+      const mockSceneSession = {
+        step: undefined,
+        currentProjectId: undefined,
+        messagesToDelete: [],
+        projectData: { name: "", competitors: [] },
+        competitorData: { username: "", hashtags: [] },
+        __scenes: {},
+      } as ScraperSceneSessionData;
+
+      localCtx.scene = {
+        enter: jest.fn(),
+        leave: jest.fn().mockResolvedValue(true),
+        reenter: jest.fn(),
+        session: mockSceneSession,
+        state: {} as any,
+        scenes: new Map(),
+        options: {} as any,
+        current: undefined,
+        reset: jest.fn(),
+        leaving: false,
+      } as unknown as Scenes.SceneContextScene<
+        TestScraperBotContext,
+        ScraperSceneSessionData
+      >;
+
+      await projectScene.middleware()(localCtx as any, async () => {});
+
+      expect(localCtx.answerCbQuery).toHaveBeenCalled();
+      expect((localCtx.storage as any).getProjectById).toHaveBeenCalledWith(
+        projectId
+      );
+      expect(localCtx.reply).toHaveBeenCalledWith(
+        `Проект \"Тестовый Проект\". Выберите действие:`,
+        generateProjectMenuKeyboard(projectId) // Используем реальную функцию для точной проверки
+      );
+      // TODO: Добавить проверку на установку ctx.scene.session.step, если это необходимо
+      // Например:
+      // expect(localCtx.scene.session.step).toBe(ScraperSceneStep.PROJECT_MENU); // Пример
+    });
+  });
+
+  describe("text handler (project creation)", () => {
+    it("should successfully create a new project when step is ADD_PROJECT", async () => {
+      const projectName = "Мой Супер Проект";
+      const mockUser = {
+        id: 1,
+        telegram_id: 123,
+        username: "testuser",
+        created_at: new Date().toISOString(),
+        is_active: true,
+      };
+      const mockCreatedProject = {
+        id: 99,
+        name: projectName,
+        user_id: mockUser.id,
+        created_at: new Date().toISOString(),
+        is_active: true,
+      };
+
+      const specificMockAdapterInstance = {
+        initialize: jest.fn().mockResolvedValue(undefined),
+        getUserByTelegramId: jest.fn().mockResolvedValue(mockUser),
+        createProject: jest.fn().mockResolvedValue(mockCreatedProject),
+        // Добавим остальные методы, чтобы соответствовать NeonAdapter, даже если они не вызываются
+        getProjectsByUserId: jest.fn(),
+        close: jest.fn(),
+        getProjectById: jest.fn(),
+        addCompetitorAccount: jest.fn(),
+        getCompetitorAccounts: jest.fn(),
+        addHashtag: jest.fn(),
+        getTrackingHashtags: jest.fn(),
+        saveReels: jest.fn(),
+        getReels: jest.fn(),
+        logParsingRun: jest.fn(),
+        createUser: jest.fn(),
+      } as unknown as NeonAdapter;
+
+      const localMockTelegram = {
+        sendMessage: jest.fn().mockResolvedValue({} as Message.TextMessage),
+      } as unknown as Telegram;
+
+      const localBotInfo: UserFromGetMe = {
+        id: 1,
+        is_bot: true as const,
+        first_name: "TestBot",
+        username: "TestBot",
+        can_join_groups: true,
+        can_read_all_group_messages: true,
+        supports_inline_queries: true,
+      };
+
+      // Для текстового обработчика нужен Update.MessageUpdate
+      const localUpdate: Update.MessageUpdate = {
+        update_id: 1,
+        message: {
+          message_id: 1,
+          chat: { id: 123, type: "private", first_name: "TestUser" },
+          date: Date.now() / 1000,
+          from: { id: 123, is_bot: false, first_name: "TestUser" },
+          text: projectName, // Название проекта передается как текст сообщения
+          edit_date: undefined,
+        },
+      };
+
+      let localCtx = new Context(
+        localUpdate,
+        localMockTelegram,
+        localBotInfo
+      ) as TestScraperBotContext;
+      localCtx.storage = specificMockAdapterInstance;
+      localCtx.reply = jest.fn().mockResolvedValue({} as Message.TextMessage);
+      localCtx.answerCbQuery = jest.fn().mockResolvedValue(true) as jest.Mock<
+        (text?: string, extra?: any) => Promise<true>
+      >;
+
+      const mockSceneSession = {
+        step: ScraperSceneStep.ADD_PROJECT, // Устанавливаем шаг для создания проекта
+        currentProjectId: undefined,
+        messagesToDelete: [],
+        projectData: { name: "", competitors: [] },
+        competitorData: { username: "", hashtags: [] },
+        __scenes: {},
+      } as ScraperSceneSessionData;
+
+      localCtx.scene = {
+        enter: jest.fn(),
+        leave: jest.fn().mockResolvedValue(true),
+        reenter: jest.fn(),
+        session: mockSceneSession,
+        state: {} as any,
+        scenes: new Map(),
+        options: {} as any,
+        current: undefined,
+        reset: jest.fn(),
+        leaving: false,
+      } as unknown as Scenes.SceneContextScene<
+        TestScraperBotContext,
+        ScraperSceneSessionData
+      >;
+
+      await projectScene.middleware()(localCtx as any, async () => {});
+
+      expect(specificMockAdapterInstance.initialize).toHaveBeenCalled();
+      expect(
+        specificMockAdapterInstance.getUserByTelegramId
+      ).toHaveBeenCalledWith(localUpdate.message.from.id);
+      expect(specificMockAdapterInstance.createProject).toHaveBeenCalledWith(
+        mockUser.id,
+        projectName
+      );
+      expect(localCtx.reply).toHaveBeenCalledWith(
+        `Проект \"${projectName}\" успешно создан!`,
+        generateNewProjectKeyboard(mockCreatedProject.id) // Используем реальную функцию
+      );
+      expect(localCtx.scene.session.step).toBeUndefined();
+    });
+
+    it("should reply with error if project name is too short", async () => {
+      const shortProjectName = "P1";
+      const mockUser = {
+        id: 1,
+        telegram_id: 123,
+        username: "testuser",
+        created_at: new Date().toISOString(),
+        is_active: true,
+      };
+
+      const specificMockAdapterInstance = {
+        initialize: jest.fn().mockResolvedValue(undefined),
+        getUserByTelegramId: jest.fn().mockResolvedValue(mockUser),
+        createProject: jest.fn(), // Не должен быть вызван
+        getProjectsByUserId: jest.fn(),
+        close: jest.fn(),
+        getProjectById: jest.fn(),
+        addCompetitorAccount: jest.fn(),
+        getCompetitorAccounts: jest.fn(),
+        addHashtag: jest.fn(),
+        getTrackingHashtags: jest.fn(),
+        saveReels: jest.fn(),
+        getReels: jest.fn(),
+        logParsingRun: jest.fn(),
+        createUser: jest.fn(),
+      } as unknown as NeonAdapter;
+
+      const localMockTelegram = {
+        sendMessage: jest.fn().mockResolvedValue({} as Message.TextMessage),
+      } as unknown as Telegram;
+
+      const localBotInfo: UserFromGetMe = {
+        id: 1,
+        is_bot: true as const,
+        first_name: "TestBot",
+        username: "TestBot",
+        can_join_groups: true,
+        can_read_all_group_messages: true,
+        supports_inline_queries: true,
+      };
+
+      const localUpdate: Update.MessageUpdate = {
+        update_id: 1,
+        message: {
+          message_id: 1,
+          chat: { id: 123, type: "private", first_name: "TestUser" },
+          date: Date.now() / 1000,
+          from: { id: 123, is_bot: false, first_name: "TestUser" },
+          text: shortProjectName,
+          edit_date: undefined,
+        },
+      };
+
+      let localCtx = new Context(
+        localUpdate,
+        localMockTelegram,
+        localBotInfo
+      ) as TestScraperBotContext;
+      localCtx.storage = specificMockAdapterInstance;
+      localCtx.reply = jest.fn().mockResolvedValue({} as Message.TextMessage);
+      localCtx.answerCbQuery = jest.fn().mockResolvedValue(true) as jest.Mock<
+        (text?: string, extra?: any) => Promise<true>
+      >;
+
+      const mockSceneSession = {
+        step: ScraperSceneStep.ADD_PROJECT,
+        currentProjectId: undefined,
+        messagesToDelete: [],
+        projectData: { name: "", competitors: [] },
+        competitorData: { username: "", hashtags: [] },
+        __scenes: {},
+      } as ScraperSceneSessionData;
+
+      const mockSceneLeave = jest.fn().mockResolvedValue(true);
+      localCtx.scene = {
+        enter: jest.fn(),
+        leave: mockSceneLeave,
+        reenter: jest.fn(),
+        session: mockSceneSession,
+        state: {} as any,
+        scenes: new Map(),
+        options: {} as any,
+        current: undefined,
+        reset: jest.fn(),
+        leaving: false,
+      } as unknown as Scenes.SceneContextScene<
+        TestScraperBotContext,
+        ScraperSceneSessionData
+      >;
+
+      await projectScene.middleware()(localCtx as any, async () => {});
+
+      expect(specificMockAdapterInstance.initialize).toHaveBeenCalled();
+      expect(
+        specificMockAdapterInstance.getUserByTelegramId
+      ).toHaveBeenCalledWith(localUpdate.message.from.id);
+      expect(localCtx.reply).toHaveBeenCalledWith(
+        "Название проекта должно содержать не менее 3 символов. Попробуйте еще раз:"
+      );
+      expect(specificMockAdapterInstance.createProject).not.toHaveBeenCalled();
+      expect(localCtx.scene.session.step).toBe(ScraperSceneStep.ADD_PROJECT); // Шаг не должен измениться
+      expect(mockSceneLeave).not.toHaveBeenCalled(); // Сцена не должна завершаться
+    });
+
+    it("should leave scene if user is not found during project creation", async () => {
+      const projectName = "Проект Неизвестного Пользователя";
+      // mockUser здесь не нужен, так как getUserByTelegramId вернет null
+
+      const specificMockAdapterInstance = {
+        initialize: jest.fn().mockResolvedValue(undefined),
+        getUserByTelegramId: jest.fn().mockResolvedValue(null), // Пользователь не найден
+        createProject: jest.fn(), // Не должен быть вызван
+        getProjectsByUserId: jest.fn(),
+        close: jest.fn(),
+        getProjectById: jest.fn(),
+        addCompetitorAccount: jest.fn(),
+        getCompetitorAccounts: jest.fn(),
+        addHashtag: jest.fn(),
+        getTrackingHashtags: jest.fn(),
+        saveReels: jest.fn(),
+        getReels: jest.fn(),
+        logParsingRun: jest.fn(),
+        createUser: jest.fn(),
+      } as unknown as NeonAdapter;
+
+      const localMockTelegram = {
+        sendMessage: jest.fn().mockResolvedValue({} as Message.TextMessage),
+      } as unknown as Telegram;
+
+      const localBotInfo: UserFromGetMe = {
+        id: 1,
+        is_bot: true as const,
+        first_name: "TestBot",
+        username: "TestBot",
+        can_join_groups: true,
+        can_read_all_group_messages: true,
+        supports_inline_queries: true,
+      };
+
+      const localUpdate: Update.MessageUpdate = {
+        update_id: 1,
+        message: {
+          message_id: 1,
+          chat: { id: 123, type: "private", first_name: "TestUser" },
+          date: Date.now() / 1000,
+          from: { id: 123, is_bot: false, first_name: "TestUser" },
+          text: projectName,
+          edit_date: undefined,
+        },
+      };
+
+      let localCtx = new Context(
+        localUpdate,
+        localMockTelegram,
+        localBotInfo
+      ) as TestScraperBotContext;
+      localCtx.storage = specificMockAdapterInstance;
+      localCtx.reply = jest.fn().mockResolvedValue({} as Message.TextMessage);
+      localCtx.answerCbQuery = jest.fn().mockResolvedValue(true) as jest.Mock<
+        (text?: string, extra?: any) => Promise<true>
+      >;
+
+      const mockSceneSession = {
+        step: ScraperSceneStep.ADD_PROJECT,
+        currentProjectId: undefined,
+        messagesToDelete: [],
+        projectData: { name: "", competitors: [] },
+        competitorData: { username: "", hashtags: [] },
+        __scenes: {},
+      } as ScraperSceneSessionData;
+
+      const mockSceneLeaveFn = jest.fn().mockResolvedValue(true); // Отдельная переменная для mock leave
+      localCtx.scene = {
+        enter: jest.fn(),
+        leave: mockSceneLeaveFn, // Используем эту переменную
+        reenter: jest.fn(),
+        session: mockSceneSession,
+        state: {} as any,
+        scenes: new Map(),
+        options: {} as any,
+        current: undefined,
+        reset: jest.fn(),
+        leaving: false,
+      } as unknown as Scenes.SceneContextScene<
+        TestScraperBotContext,
+        ScraperSceneSessionData
+      >;
+
+      await projectScene.middleware()(localCtx as any, async () => {});
+
+      expect(specificMockAdapterInstance.initialize).toHaveBeenCalled();
+      expect(
+        specificMockAdapterInstance.getUserByTelegramId
+      ).toHaveBeenCalledWith(localUpdate.message.from.id);
+      expect(localCtx.reply).toHaveBeenCalledWith(
+        "Ошибка: пользователь не найден."
+      );
+      expect(mockSceneLeaveFn).toHaveBeenCalled(); // Проверяем вызов ctx.scene.leave()
+      expect(specificMockAdapterInstance.createProject).not.toHaveBeenCalled();
+    });
+
+    it("should handle null response from adapter.createProject", async () => {
+      const projectName = "Проект, Который Не Создастся (null)";
+      const mockUser = {
+        id: 1,
+        telegram_id: 123,
+        username: "testuser",
+        created_at: new Date().toISOString(),
+        is_active: true,
+      };
+
+      const specificMockAdapterInstance = {
+        initialize: jest.fn().mockResolvedValue(undefined),
+        getUserByTelegramId: jest.fn().mockResolvedValue(mockUser),
+        createProject: jest.fn().mockResolvedValue(null), // createProject возвращает null
+        getProjectsByUserId: jest.fn(),
+        close: jest.fn(),
+        getProjectById: jest.fn(),
+        addCompetitorAccount: jest.fn(),
+        getCompetitorAccounts: jest.fn(),
+        addHashtag: jest.fn(),
+        getTrackingHashtags: jest.fn(),
+        saveReels: jest.fn(),
+        getReels: jest.fn(),
+        logParsingRun: jest.fn(),
+        createUser: jest.fn(),
+      } as unknown as NeonAdapter;
+
+      const localMockTelegram = {
+        sendMessage: jest.fn().mockResolvedValue({} as Message.TextMessage),
+      } as unknown as Telegram;
+
+      const localBotInfo: UserFromGetMe = {
+        id: 1,
+        is_bot: true as const,
+        first_name: "TestBot",
+        username: "TestBot",
+        can_join_groups: true,
+        can_read_all_group_messages: true,
+        supports_inline_queries: true,
+      };
+
+      const localUpdate: Update.MessageUpdate = {
+        update_id: 1,
+        message: {
+          message_id: 1,
+          chat: { id: 123, type: "private", first_name: "TestUser" },
+          date: Date.now() / 1000,
+          from: { id: 123, is_bot: false, first_name: "TestUser" },
+          text: projectName,
+          edit_date: undefined,
+        },
+      };
+
+      let localCtx = new Context(
+        localUpdate,
+        localMockTelegram,
+        localBotInfo
+      ) as TestScraperBotContext;
+      localCtx.storage = specificMockAdapterInstance;
+      localCtx.reply = jest.fn().mockResolvedValue({} as Message.TextMessage);
+      localCtx.answerCbQuery = jest.fn().mockResolvedValue(true) as jest.Mock<
+        (text?: string, extra?: any) => Promise<true>
+      >;
+
+      const mockSceneSession = {
+        step: ScraperSceneStep.ADD_PROJECT,
+        currentProjectId: undefined,
+        messagesToDelete: [],
+        projectData: { name: "", competitors: [] },
+        competitorData: { username: "", hashtags: [] },
+        __scenes: {},
+      } as ScraperSceneSessionData;
+
+      const mockSceneLeaveFn = jest.fn().mockResolvedValue(true);
+      localCtx.scene = {
+        enter: jest.fn(),
+        leave: mockSceneLeaveFn,
+        reenter: jest.fn(),
+        session: mockSceneSession,
+        state: {} as any,
+        scenes: new Map(),
+        options: {} as any,
+        current: undefined,
+        reset: jest.fn(),
+        leaving: false,
+      } as unknown as Scenes.SceneContextScene<
+        TestScraperBotContext,
+        ScraperSceneSessionData
+      >;
+
+      await projectScene.middleware()(localCtx as any, async () => {});
+
+      expect(specificMockAdapterInstance.initialize).toHaveBeenCalled();
+      expect(
+        specificMockAdapterInstance.getUserByTelegramId
+      ).toHaveBeenCalledWith(localUpdate.message.from.id);
+      expect(specificMockAdapterInstance.createProject).toHaveBeenCalledWith(
+        mockUser.id,
+        projectName
+      );
+      expect(localCtx.reply).toHaveBeenCalledWith(
+        "Ошибка при создании проекта. Попробуйте позже."
+      );
+      expect(localCtx.scene.session.step).toBeUndefined(); // Шаг должен сброситься
+      expect(mockSceneLeaveFn).not.toHaveBeenCalled(); // Сцена не должна завершаться
+    });
+
+    it("should handle error thrown by adapter.createProject", async () => {
+      const projectName = "Проект, Который Вызовет Ошибку";
+      const mockUser = {
+        id: 1,
+        telegram_id: 123,
+        username: "testuser",
+        created_at: new Date().toISOString(),
+        is_active: true,
+      };
+      const dbError = new Error("DB Connection Error");
+
+      const specificMockAdapterInstance = {
+        initialize: jest.fn().mockResolvedValue(undefined),
+        getUserByTelegramId: jest.fn().mockResolvedValue(mockUser),
+        createProject: jest.fn().mockRejectedValue(dbError), // createProject выбрасывает ошибку
+        getProjectsByUserId: jest.fn(),
+        close: jest.fn(),
+        getProjectById: jest.fn(),
+        addCompetitorAccount: jest.fn(),
+        getCompetitorAccounts: jest.fn(),
+        addHashtag: jest.fn(),
+        getTrackingHashtags: jest.fn(),
+        saveReels: jest.fn(),
+        getReels: jest.fn(),
+        logParsingRun: jest.fn(),
+        createUser: jest.fn(),
+      } as unknown as NeonAdapter;
+
+      const localMockTelegram = {
+        sendMessage: jest.fn().mockResolvedValue({} as Message.TextMessage),
+      } as unknown as Telegram;
+
+      const localBotInfo: UserFromGetMe = {
+        id: 1,
+        is_bot: true as const,
+        first_name: "TestBot",
+        username: "TestBot",
+        can_join_groups: true,
+        can_read_all_group_messages: true,
+        supports_inline_queries: true,
+      };
+
+      const localUpdate: Update.MessageUpdate = {
+        update_id: 1,
+        message: {
+          message_id: 1,
+          chat: { id: 123, type: "private", first_name: "TestUser" },
+          date: Date.now() / 1000,
+          from: { id: 123, is_bot: false, first_name: "TestUser" },
+          text: projectName,
+          edit_date: undefined,
+        },
+      };
+
+      let localCtx = new Context(
+        localUpdate,
+        localMockTelegram,
+        localBotInfo
+      ) as TestScraperBotContext;
+      localCtx.storage = specificMockAdapterInstance;
+      localCtx.reply = jest.fn().mockResolvedValue({} as Message.TextMessage);
+      localCtx.answerCbQuery = jest.fn().mockResolvedValue(true) as jest.Mock<
+        (text?: string, extra?: any) => Promise<true>
+      >;
+
+      const mockSceneSession = {
+        step: ScraperSceneStep.ADD_PROJECT,
+        currentProjectId: undefined,
+        messagesToDelete: [],
+        projectData: { name: "", competitors: [] },
+        competitorData: { username: "", hashtags: [] },
+        __scenes: {},
+      } as ScraperSceneSessionData;
+
+      const mockSceneLeaveFn = jest.fn().mockResolvedValue(true);
+      localCtx.scene = {
+        enter: jest.fn(),
+        leave: mockSceneLeaveFn,
+        reenter: jest.fn(),
+        session: mockSceneSession,
+        state: {} as any,
+        scenes: new Map(),
+        options: {} as any,
+        current: undefined,
+        reset: jest.fn(),
+        leaving: false,
+      } as unknown as Scenes.SceneContextScene<
+        TestScraperBotContext,
+        ScraperSceneSessionData
+      >;
+
+      const originalConsoleError = console.error;
+      const consoleErrorMock = mock(); // Используем mock из bun:test
+      console.error = consoleErrorMock;
+
+      await projectScene.middleware()(localCtx as any, async () => {});
+
+      expect(specificMockAdapterInstance.initialize).toHaveBeenCalled();
+      expect(
+        specificMockAdapterInstance.getUserByTelegramId
+      ).toHaveBeenCalledWith(localUpdate.message.from.id);
+      expect(specificMockAdapterInstance.createProject).toHaveBeenCalledWith(
+        mockUser.id,
+        projectName
+      );
+      expect(consoleErrorMock).toHaveBeenCalledWith(
+        "Ошибка при создании проекта:",
+        dbError
+      );
+      expect(localCtx.reply).toHaveBeenCalledWith(
+        "Произошла ошибка при создании проекта. Пожалуйста, попробуйте позже."
+      );
+      expect(localCtx.scene.session.step).toBe(ScraperSceneStep.ADD_PROJECT); // Шаг НЕ должен сбрасываться
+      expect(mockSceneLeaveFn).not.toHaveBeenCalled();
+
+      console.error = originalConsoleError; // Восстанавливаем оригинальный console.error
     });
   });
 
