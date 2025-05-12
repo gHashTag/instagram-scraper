@@ -38,19 +38,29 @@ export function generateProjectMenuKeyboard(projectId: number) {
   return Markup.inlineKeyboard([
     [
       Markup.button.callback(
-        "Добавить конкурента",
-        `add_competitor_${projectId}`
+        "👥 Управлять конкурентами",
+        `competitors_project_${projectId}`
       ),
     ],
-    [Markup.button.callback("Добавить хэштег", `add_hashtag_${projectId}`)],
     [
       Markup.button.callback(
-        "Запустить скрапинг",
+        "📊 Управлять хештегами",
+        `manage_hashtags_${projectId}`
+      ),
+    ],
+    [
+      Markup.button.callback(
+        "▶️ Запустить скрапинг (TODO)",
         `scrape_project_${projectId}`
       ),
     ],
-    [Markup.button.callback("Просмотреть Reels", `show_reels_${projectId}`)],
-    [Markup.button.callback("Назад к проектам", "back_to_projects")],
+    [
+      Markup.button.callback(
+        "👀 Просмотреть Reels (TODO)",
+        `show_reels_${projectId}`
+      ),
+    ],
+    [Markup.button.callback("🔙 Назад к проектам", "back_to_projects")],
   ]);
 }
 
@@ -61,13 +71,13 @@ export function generateProjectMenuKeyboard(projectId: number) {
  */
 export function generateNewProjectKeyboard(projectId: number) {
   return Markup.inlineKeyboard([
-    [Markup.button.callback("К списку проектов", "back_to_projects")],
+    [Markup.button.callback("🔙 К списку проектов", "back_to_projects")],
     [
       Markup.button.callback(
-        "Добавить конкурента",
+        "👥 Добавить конкурента",
         `add_competitor_${projectId}`
       ),
     ],
-    [Markup.button.callback("Добавить хэштег", `add_hashtag_${projectId}`)],
+    [Markup.button.callback("📊 Добавить хештег", `add_hashtag_${projectId}`)],
   ]);
 }

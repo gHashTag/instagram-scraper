@@ -52,7 +52,8 @@ projectScene.enter(async (ctx) => {
 
     await ctx.reply(
       projects && projects.length > 0
-        ? "Ваши проекты:"
+        ? // ? "Ваши проекты:"
+          "Ваши проекты: Выберите проект для управления или создайте новый."
         : "У вас пока нет проектов. Хотите создать новый?",
       {
         reply_markup: generateProjectsKeyboard(projects || []).reply_markup,
@@ -81,11 +82,9 @@ projectScene.action("exit_scene", async (ctx) => {
 
 // Обработка создания нового проекта
 projectScene.action("create_project", async (ctx) => {
+  await ctx.reply("Введите название нового проекта (минимум 3 символа):");
+  ctx.scene.session.step = ScraperSceneStep.CREATE_PROJECT;
   await ctx.answerCbQuery();
-  await ctx.reply(
-    "Введите название нового проекта (например, 'Мой косметологический центр'):"
-  );
-  ctx.scene.session.step = ScraperSceneStep.ADD_PROJECT;
 });
 
 // Обработка текстовых сообщений
@@ -97,23 +96,24 @@ projectScene.on("text", async (ctx) => {
     return;
   }
 
-  if (ctx.scene.session.step === ScraperSceneStep.ADD_PROJECT) {
+  if (ctx.scene.session.step === ScraperSceneStep.CREATE_PROJECT) {
+    const projectName = ctx.message.text.trim();
+    const telegramId = ctx.from?.id;
+    if (projectName.length < 3) {
+      await ctx.reply(
+        "Название проекта должно содержать не менее 3 символов. Попробуйте еще раз:"
+      );
+      return;
+    }
+
     try {
       await adapter.initialize();
 
-      const user = await adapter.getUserByTelegramId(ctx.from.id);
+      const user = await adapter.getUserByTelegramId(telegramId);
       if (!user) {
         await ctx.reply("Ошибка: пользователь не найден.");
         // await adapter.close();
         return ctx.scene.leave();
-      }
-
-      const projectName = ctx.message.text.trim();
-      if (projectName.length < 3) {
-        await ctx.reply(
-          "Название проекта должно содержать не менее 3 символов. Попробуйте еще раз:"
-        );
-        return;
       }
 
       const project = await adapter.createProject(
@@ -122,9 +122,12 @@ projectScene.on("text", async (ctx) => {
       );
 
       if (project) {
-        await ctx.reply(`Проект "${projectName}" успешно создан!`, {
-          reply_markup: generateNewProjectKeyboard(project.id).reply_markup,
-        });
+        await ctx.reply(
+          `Проект \"${projectName}\" успешно создан!\nТеперь вы можете управлять им: добавить конкурентов или хештеги.`,
+          {
+            reply_markup: generateNewProjectKeyboard(project.id).reply_markup,
+          }
+        );
       } else {
         await ctx.reply("Ошибка при создании проекта. Попробуйте позже.");
       }
@@ -181,6 +184,26 @@ projectScene.action(/project_(\d+)/, async (ctx) => {
   }
 });
 
-// Добавить другие обработчики для действий add_competitor, add_hashtag, scrape_project и т.д.
+// Обработка кнопки "Управлять хештегами"
+projectScene.action(/manage_hashtags_(\d+)/, async (ctx) => {
+  const projectId = parseInt(ctx.match[1], 10);
+
+  if (isNaN(projectId)) {
+    console.error(
+      `Invalid projectId parsed from manage_hashtags action: ${ctx.match[1]}`
+    );
+    await ctx.reply("Ошибка выбора проекта.");
+    await ctx.answerCbQuery();
+    return;
+  }
+
+  // Сохраняем projectId в сессии для hashtagScene
+  ctx.scene.session.projectId = projectId;
+
+  await ctx.answerCbQuery(); // Отвечаем на нажатие кнопки
+  await ctx.scene.enter("instagram_scraper_hashtags"); // Входим в сцену управления хештегами
+});
+
+// Добавить другие обработчики для действий scrape_project, show_reels и т.д.
 
 export default projectScene;
