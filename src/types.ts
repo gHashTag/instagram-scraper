@@ -1,14 +1,15 @@
-import { Context, Scenes } from "telegraf";
+import { Context as TelegrafContext, Scenes } from "telegraf";
 
 // Placeholder for project types
 export {};
 
-// Базовый контекст Telegraf, расширенный для нужд бота
-export interface ScraperBotContext extends Context {
-  storage?: StorageAdapter;
+// Базовый интерфейс для контекста Telegraf с добавлением поддержки сцен
+export interface ScraperBotContext extends TelegrafContext {
+  storage: StorageAdapter; // Используем интерфейс
   scraperConfig?: InstagramScraperBotConfig;
-  // Добавляем session к Scenes.SceneContextScene для типизации ctx.scene.session
+  // Возвращаем тип к SceneContextScene, который включает и контекст, и сессию
   scene: Scenes.SceneContextScene<ScraperBotContext, ScraperSceneSessionData>;
+  match?: RegExpExecArray | null;
 }
 
 // Адаптер для хранения данных
@@ -24,12 +25,12 @@ export interface StorageAdapter {
     projectId: number,
     username: string,
     instagramUrl: string
-  ): Promise<Competitor>;
+  ): Promise<Competitor | null>;
   getCompetitorAccounts(
     projectId: number,
     activeOnly?: boolean
   ): Promise<Competitor[]>;
-  addHashtag(projectId: number, name: string): Promise<Hashtag>;
+  addHashtag(projectId: number, name: string): Promise<Hashtag | null>;
   getTrackingHashtags(
     projectId: number,
     activeOnly?: boolean
@@ -71,12 +72,12 @@ export interface Competitor {
   is_active: boolean;
 }
 
+// Тип для хештега
 export interface Hashtag {
   id: number;
   project_id: number;
-  name: string;
-  created_at: string;
-  is_active: boolean;
+  hashtag: string; // Сам хештег без #
+  created_at: string; // Дата добавления
 }
 
 // Определяем ReelContent (ранее Reel, чтобы избежать конфликта с возможным Reel из telegraf)
@@ -105,13 +106,15 @@ export interface InstagramScraperBotConfig {
   apifyToken?: string;
 }
 
-// Шаги в сценах
+// Шаги сцены
 export enum ScraperSceneStep {
-  ADD_PROJECT = "ADD_PROJECT",
-  ADD_COMPETITOR = "ADD_COMPETITOR",
-  ADD_HASHTAG = "ADD_HASHTAG",
-  // ... другие шаги
-  CREATE_PROJECT = "CREATE_PROJECT", // Используется в project-scene.test.ts
+  PROJECT_LIST = "PROJECT_LIST", // Шаг для отображения списка проектов
+  CREATE_PROJECT = "CREATE_PROJECT",
+  COMPETITOR_LIST = "COMPETITOR_LIST", // Добавлен для сцены конкурентов
+  ADD_COMPETITOR = "ADD_COMPETITOR", // Добавлен для сцены конкурентов
+  DELETE_COMPETITOR = "DELETE_COMPETITOR", // Добавлен для сцены конкурентов
+  HASHTAG_LIST = "HASHTAG_LIST", // Добавлен для сцены хештегов
+  ADD_HASHTAG = "ADD_HASHTAG", // Добавлен для сцены хештегов
 }
 
 // Данные сессии для сцен
@@ -125,7 +128,7 @@ export interface ScraperSceneSessionData extends Scenes.SceneSessionData {
 
 // Тип для MiddlewareFn, если он не импортируется из telegraf/types
 // (Telegraf V4 использует `Middleware<TContext> `)
-export type Middleware<TContext extends Context> = (
+export type Middleware<TContext extends TelegrafContext> = (
   ctx: TContext,
   next: () => Promise<void>
 ) => Promise<void> | void;

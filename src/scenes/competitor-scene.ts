@@ -2,6 +2,59 @@ import { Scenes, Markup } from "telegraf";
 import { ScraperBotContext } from "../types";
 import { NeonAdapter } from "../adapters/neon-adapter";
 import { ScraperSceneStep, ScraperSceneSessionData } from "@/types";
+import { User } from "../types";
+
+/**
+ * Обработчик действия для удаления конкурента.
+ */
+export const handleDeleteCompetitorAction = async (
+  ctx: ScraperBotContext & { match: RegExpExecArray }
+) => {
+  const adapter = ctx.storage as NeonAdapter;
+  const projectId = parseInt(ctx.match[1], 10);
+  const username = ctx.match[2];
+
+  if (isNaN(projectId) || !username) {
+    console.error(
+      `Invalid data parsed from delete action: projectId=${ctx.match[1]}, username=${ctx.match[2]}`
+    );
+    await ctx.reply(
+      "Ошибка при удалении конкурента. Пожалуйста, попробуйте снова."
+    );
+    await ctx.answerCbQuery("Ошибка");
+    return;
+  }
+
+  let success = false;
+  try {
+    await adapter.initialize();
+    success = await adapter.deleteCompetitorAccount(projectId, username);
+
+    if (success) {
+      await ctx.reply(`Конкурент "${username}" успешно удален из проекта.`);
+      await ctx.editMessageReplyMarkup(undefined);
+      await ctx.answerCbQuery("Удалено");
+    } else {
+      await ctx.reply(
+        `Не удалось найти или удалить конкурента "${username}". Возможно, он уже был удален.`
+      );
+      await ctx.answerCbQuery("Ошибка удаления");
+    }
+  } catch (error) {
+    console.error(
+      `Ошибка при удалении конкурента ${username} из проекта ${projectId}:`,
+      error
+    );
+    await ctx.reply(
+      "Произошла техническая ошибка при удалении конкурента. Попробуйте позже."
+    );
+    await ctx.answerCbQuery("Ошибка");
+  } finally {
+    if (adapter) {
+      await adapter.close();
+    }
+  }
+};
 
 /**
  * Сцена для управления конкурентами
@@ -61,11 +114,20 @@ competitorScene.enter(async (ctx) => {
           .map((c, i) => `${i + 1}. [${c.username}](${c.instagram_url})`)
           .join("\n");
 
+        // Формируем клавиатуру с кнопками удаления
+        const competitorButtons = competitors.map((c) => [
+          Markup.button.callback(
+            `🗑️ Удалить ${c.username}`,
+            `delete_competitor_${projects[0].id}_${c.username}`
+          ),
+        ]);
+
         await ctx.reply(
-          `Конкуренты в проекте "${projects[0].name}":\n\n${competitorList}`,
+          `Конкуренты в проекте "${projects[0].name}":\n\n${competitorList}\n\nЧто вы хотите сделать дальше?`,
           {
             parse_mode: "Markdown",
             reply_markup: Markup.inlineKeyboard([
+              ...competitorButtons, // Добавляем кнопки удаления
               [
                 Markup.button.callback(
                   "Добавить конкурента",
@@ -97,7 +159,7 @@ competitorScene.enter(async (ctx) => {
   } catch (error) {
     console.error("Ошибка при получении конкурентов:", error);
     await ctx.reply(
-      "Произошла ошибка при получении конкурентов. Пожалуйста, попробуйте позже."
+      "Не удалось загрузить данные для управления конкурентами. Попробуйте позже или обратитесь в поддержку."
     );
     // await adapter.close(); // Закрываем в finally или если ошибка не связана с адаптером
     await ctx.scene.leave();
@@ -135,19 +197,31 @@ competitorScene.action(/competitors_project_(\d+)/, async (ctx) => {
         .map((c, i) => `${i + 1}. [${c.username}](${c.instagram_url})`)
         .join("\n");
 
-      await ctx.reply(`Конкуренты в выбранном проекте:\n\n${competitorList}`, {
-        parse_mode: "Markdown",
-        reply_markup: Markup.inlineKeyboard([
-          [
-            Markup.button.callback(
-              "Добавить конкурента",
-              `add_competitor_${projectId}`
-            ),
-          ],
-          [Markup.button.callback("Назад к проектам", "back_to_projects")],
-          [Markup.button.callback("Выйти", "exit_scene")],
-        ]).reply_markup,
-      });
+      // Формируем клавиатуру с кнопками удаления
+      const competitorButtons = competitors.map((c) => [
+        Markup.button.callback(
+          `🗑️ Удалить ${c.username}`,
+          `delete_competitor_${projectId}_${c.username}`
+        ),
+      ]);
+
+      await ctx.reply(
+        `Конкуренты в выбранном проекте:\n\n${competitorList}\n\nЧто вы хотите сделать дальше?`,
+        {
+          parse_mode: "Markdown",
+          reply_markup: Markup.inlineKeyboard([
+            ...competitorButtons, // Добавляем кнопки удаления
+            [
+              Markup.button.callback(
+                "Добавить конкурента",
+                `add_competitor_${projectId}`
+              ),
+            ],
+            [Markup.button.callback("Назад к проектам", "back_to_projects")],
+            [Markup.button.callback("Выйти", "exit_scene")],
+          ]).reply_markup,
+        }
+      );
     }
 
     await adapter.close();
@@ -157,7 +231,7 @@ competitorScene.action(/competitors_project_(\d+)/, async (ctx) => {
       error
     );
     await ctx.reply(
-      "Произошла ошибка при получении конкурентов. Пожалуйста, попробуйте позже."
+      "Не удалось загрузить список конкурентов для этого проекта. Попробуйте позже или обратитесь в поддержку."
     );
     // await adapter.close();
   }
@@ -169,6 +243,17 @@ competitorScene.action(/competitors_project_(\d+)/, async (ctx) => {
 competitorScene.action(/add_competitor_(\d+)/, async (ctx) => {
   // Здесь адаптер не используется напрямую, только сессия
   const projectId = parseInt(ctx.match[1]);
+
+  // Проверка на NaN
+  if (isNaN(projectId)) {
+    console.error(`Invalid projectId parsed from action: ${ctx.match[1]}`);
+    await ctx.reply(
+      "Ошибка выбора проекта. Пожалуйста, вернитесь назад и выберите проект снова."
+    );
+    await ctx.answerCbQuery();
+    return; // Выход
+  }
+
   ctx.scene.session.projectId = projectId;
 
   await ctx.reply(
@@ -186,6 +271,8 @@ competitorScene.on("text", async (ctx) => {
     const instagramUrl = ctx.message.text.trim();
     const projectId = ctx.scene.session.projectId;
 
+    let user: User | null = null;
+
     if (!projectId) {
       await ctx.reply("Ошибка: не указан проект. Начните сначала.");
       return ctx.scene.reenter();
@@ -202,6 +289,20 @@ competitorScene.on("text", async (ctx) => {
     try {
       await adapter.initialize();
 
+      // Проверка пользователя ПЕРЕД добавлением конкурента
+      user = await adapter.getUserByTelegramId(ctx.from?.id || 0);
+      if (!user) {
+        console.error(
+          `Error in onText handler: User not found for telegramId: ${ctx.from?.id}`
+        );
+        await ctx.reply(
+          "Ошибка: Пользователь не найден. Пожалуйста, используйте /start."
+        );
+        ctx.scene.session.step = undefined;
+        await adapter.close(); // Закрываем адаптер здесь
+        return ctx.scene.leave(); // Выходим из сцены
+      }
+
       // Извлекаем имя пользователя из URL
       let username = instagramUrl.substring(instagramUrl.lastIndexOf("/") + 1);
       // Убираем возможные параметры из URL типа ?igshid=...
@@ -215,7 +316,6 @@ competitorScene.on("text", async (ctx) => {
         await ctx.reply(
           "Не удалось извлечь имя пользователя из URL. Пожалуйста, проверьте URL и попробуйте снова."
         );
-        // await adapter.close(); // Закрытие адаптера в блоке finally
         return; // Явный выход
       }
 
@@ -226,29 +326,37 @@ competitorScene.on("text", async (ctx) => {
       );
 
       if (competitor) {
-        await ctx.reply(`Конкурент @${username} успешно добавлен!`, {
-          reply_markup: Markup.inlineKeyboard([
-            [
-              Markup.button.callback(
-                "Посмотреть всех конкурентов",
-                `competitors_project_${projectId}`
-              ),
-            ],
-            [
-              Markup.button.callback(
-                "Добавить еще конкурента",
-                `add_competitor_${projectId}`
-              ),
-            ],
-            [Markup.button.callback("Выйти", "exit_scene")],
-          ]).reply_markup,
+        const successMessage = `Конкурент @${username} успешно добавлен!`;
+        const successKeyboard = Markup.inlineKeyboard([
+          [
+            Markup.button.callback(
+              "Посмотреть всех конкурентов",
+              `competitors_project_${projectId}`
+            ),
+          ],
+          [
+            Markup.button.callback(
+              "Добавить еще конкурента",
+              `add_competitor_${projectId}`
+            ),
+          ],
+          [Markup.button.callback("Выйти", "exit_scene")],
+        ]);
+        await ctx.reply(successMessage, {
+          reply_markup: successKeyboard.reply_markup,
         });
+        if (adapter && typeof adapter.close === "function") {
+          await adapter.close();
+        }
       } else {
-        await ctx.reply("Ошибка при добавлении конкурента. Попробуйте позже.");
+        const errorMessage = `Не удалось добавить конкурента @${username}. Возможно, он уже добавлен или произошла ошибка базы данных.`;
+        await ctx.reply(errorMessage);
+        if (adapter && typeof adapter.close === "function") {
+          await adapter.close();
+        }
       }
 
       ctx.scene.session.step = undefined; // Сбрасываем шаг
-      // await adapter.close(); // Закрытие адаптера в блоке finally
       return; // Явный выход после успешной обработки или ошибки добавления
     } catch (error) {
       console.error("Ошибка при добавлении конкурента в сцене:", error);
@@ -256,13 +364,11 @@ competitorScene.on("text", async (ctx) => {
         "Произошла внутренняя ошибка при добавлении конкурента. Попробуйте позже."
       );
       ctx.scene.session.step = undefined; // Сбрасываем шаг на всякий случай
-      // await adapter.close(); // Закрытие адаптера в блоке finally
-      return; // Явный выход в случае ошибки
-    } finally {
-      // Гарантированное закрытие адаптера
       if (adapter && typeof adapter.close === "function") {
+        // Закрываем адаптер в catch
         await adapter.close();
       }
+      return; // Явный выход в случае ошибки
     }
   } else {
     // Если шаг не ADD_COMPETITOR, то ничего не делаем или переходим в начало
@@ -285,5 +391,11 @@ competitorScene.action("back_to_projects", async (ctx) => {
   await ctx.scene.reenter();
   await ctx.answerCbQuery();
 });
+
+// Обработка удаления конкурента - использует экспортированный обработчик
+competitorScene.action(
+  /delete_competitor_(\d+)_(.+)/,
+  handleDeleteCompetitorAction
+);
 
 export default competitorScene;

@@ -8,6 +8,7 @@
 import { Telegraf, Scenes } from "telegraf";
 import { competitorScene } from "./src/scenes/competitor-scene";
 import { projectScene } from "./src/scenes/project-scene";
+import { hashtagScene } from "./src/scenes/hashtag-scene";
 import type { Middleware } from "telegraf";
 import type {
   StorageAdapter,
@@ -70,6 +71,7 @@ export function setupInstagramScraperBot(
   const stage = new Scenes.Stage<ScraperBotContext>([
     projectScene,
     competitorScene,
+    hashtagScene,
     // Здесь будут добавляться другие сцены
   ]);
 

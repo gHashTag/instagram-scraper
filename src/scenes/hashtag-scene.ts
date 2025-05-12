@@ -1,18 +1,18 @@
 import { Scenes, Markup } from "telegraf";
-import { ScraperBotContext } from "../types";
+import type { ScraperBotContext } from "@/types";
 import { NeonAdapter } from "../adapters/neon-adapter";
 import { ScraperSceneStep, ScraperSceneSessionData } from "@/types";
+// import { PAGINATION_LIMIT } from "./components/keyboard-pagination"; // Удаляем этот импорт
 // import { User } from "../types"; // Remove unused import
 
 /**
- * Сцена для управления хештегами проекта
+ * Обработчик входа в сцену управления хештегами
  */
-export const hashtagScene = new Scenes.BaseScene<
-  ScraperBotContext & { scene: { session: ScraperSceneSessionData } }
->("instagram_scraper_hashtags");
-
-// Вход в сцену - показ хештегов для проекта
-hashtagScene.enter(async (ctx) => {
+export async function handleHashtagEnter(
+  ctx: ScraperBotContext & {
+    scene: { session: ScraperSceneSessionData; leave: () => void };
+  }
+) {
   const adapter = ctx.storage as NeonAdapter;
   const projectId = ctx.scene.session.projectId;
 
@@ -25,7 +25,6 @@ hashtagScene.enter(async (ctx) => {
 
   try {
     await adapter.initialize();
-    // TODO: Получить хештеги
     const hashtags = await adapter.getHashtagsByProjectId(projectId);
     const projectName =
       (await adapter.getProjectById(projectId))?.name ||
@@ -42,7 +41,7 @@ hashtagScene.enter(async (ctx) => {
                 `add_hashtag_${projectId}`
               ),
             ],
-            [Markup.button.callback("Назад к проекту", `project_${projectId}`)], // Кнопка возврата к управлению проектом
+            [Markup.button.callback("Назад к проекту", `project_${projectId}`)],
           ]).reply_markup,
         }
       );
@@ -50,7 +49,6 @@ hashtagScene.enter(async (ctx) => {
       const hashtagList = hashtags
         .map((h, i) => `${i + 1}. #${h.hashtag}`)
         .join("\n");
-      // TODO: Добавить кнопки удаления
       const hashtagButtons = hashtags.map((h) => [
         Markup.button.callback(
           `🗑️ Удалить #${h.hashtag}`,
@@ -62,7 +60,7 @@ hashtagScene.enter(async (ctx) => {
         `Хештеги в проекте "${projectName}":\n\n${hashtagList}\n\nЧто вы хотите сделать дальше?`,
         {
           reply_markup: Markup.inlineKeyboard([
-            ...hashtagButtons, // Добавляем кнопки удаления
+            ...hashtagButtons,
             [
               Markup.button.callback(
                 "Добавить хештег",
@@ -80,16 +78,23 @@ hashtagScene.enter(async (ctx) => {
       error
     );
     await ctx.reply("Не удалось загрузить список хештегов. Попробуйте позже.");
-    // Не покидаем сцену, даем шанс попробовать еще раз или вернуться
   } finally {
     if (adapter) {
       await adapter.close();
     }
   }
-});
+}
 
-// Обработка кнопки "Добавить хештег"
-hashtagScene.action(/add_hashtag_(\d+)/, async (ctx) => {
+/**
+ * Обработчик нажатия кнопки "Добавить хештег"
+ */
+export async function handleAddHashtagAction(
+  ctx: ScraperBotContext & {
+    scene: { session: ScraperSceneSessionData };
+    match: RegExpExecArray;
+    answerCbQuery: () => Promise<boolean>;
+  }
+) {
   const projectId = parseInt(ctx.match[1], 10);
   if (isNaN(projectId)) {
     console.error(
@@ -99,7 +104,7 @@ hashtagScene.action(/add_hashtag_(\d+)/, async (ctx) => {
     await ctx.answerCbQuery();
     return;
   }
-  ctx.scene.session.projectId = projectId; // Убедимся, что projectId в сессии
+  ctx.scene.session.projectId = projectId;
   ctx.scene.session.step = ScraperSceneStep.ADD_HASHTAG;
   await ctx.reply("Введите хештег для добавления (без #):", {
     reply_markup: Markup.inlineKeyboard([
@@ -107,21 +112,39 @@ hashtagScene.action(/add_hashtag_(\d+)/, async (ctx) => {
     ]).reply_markup,
   });
   await ctx.answerCbQuery();
-});
+}
 
-// Обработка кнопки "Отмена" при вводе хештега
-hashtagScene.action(/cancel_hashtag_input_(\d+)/, async (ctx) => {
-  await ctx.deleteMessage(); // Удаляем сообщение с запросом ввода
+/**
+ * Обработчик нажатия кнопки "Отмена" при вводе хештега
+ */
+export async function handleCancelHashtagInputAction(
+  ctx: ScraperBotContext & {
+    scene: { session: ScraperSceneSessionData; reenter: () => void };
+    answerCbQuery: (text?: string) => Promise<boolean>;
+    deleteMessage: () => Promise<boolean>;
+  }
+) {
+  await ctx.deleteMessage();
   ctx.scene.session.step = undefined;
   await ctx.answerCbQuery("Ввод отменен.");
-  // Возвращаемся к отображению хештегов
   ctx.scene.reenter();
-});
+}
 
-// Обработка текстовых сообщений (ввод хештега)
-hashtagScene.on("text", async (ctx) => {
+/**
+ * Обработчик ввода текста хештега
+ */
+export async function handleHashtagTextInput(
+  ctx: ScraperBotContext & {
+    scene: {
+      session: ScraperSceneSessionData;
+      leave: () => void;
+      reenter: () => void;
+    };
+    message: { text: string };
+  }
+) {
   if (ctx.scene.session.step !== ScraperSceneStep.ADD_HASHTAG) {
-    return; // Ничего не делаем, если не ожидаем ввод хештега
+    return;
   }
 
   const adapter = ctx.storage as NeonAdapter;
@@ -134,17 +157,14 @@ hashtagScene.on("text", async (ctx) => {
     return ctx.scene.leave();
   }
 
-  // Убираем # если пользователь его ввел
   if (hashtagInput.startsWith("#")) {
     hashtagInput = hashtagInput.substring(1);
   }
 
-  // Простая валидация
   if (!hashtagInput || hashtagInput.includes(" ") || hashtagInput.length < 2) {
     await ctx.reply(
       "Некорректный хештег. Введите одно слово без пробелов (минимум 2 символа), # ставить не нужно."
     );
-    // Остаемся в состоянии ожидания ввода
     return;
   }
 
@@ -168,13 +188,21 @@ hashtagScene.on("text", async (ctx) => {
     if (adapter) {
       await adapter.close();
     }
-    ctx.scene.session.step = undefined; // Сбрасываем шаг
-    ctx.scene.reenter(); // Перезаходим, чтобы показать обновленный список
+    ctx.scene.session.step = undefined;
+    ctx.scene.reenter();
   }
-});
+}
 
-// Обработка удаления хештега
-hashtagScene.action(/delete_hashtag_(\d+)_(.+)/, async (ctx) => {
+/**
+ * Обработчик удаления хештега
+ */
+export async function handleDeleteHashtagAction(
+  ctx: ScraperBotContext & {
+    scene: { session: ScraperSceneSessionData; reenter: () => void };
+    match: RegExpExecArray;
+    answerCbQuery: (text?: string) => Promise<boolean>;
+  }
+) {
   const adapter = ctx.storage as NeonAdapter;
   const projectId = parseInt(ctx.match[1], 10);
   const hashtag = ctx.match[2];
@@ -190,7 +218,7 @@ hashtagScene.action(/delete_hashtag_(\d+)_(.+)/, async (ctx) => {
 
   try {
     await adapter.initialize();
-    await adapter.removeHashtag(projectId, hashtag); // Используем существующий метод
+    await adapter.removeHashtag(projectId, hashtag);
     await ctx.reply(`Хештег #${hashtag} удален.`);
     await ctx.answerCbQuery("Удалено");
   } catch (error) {
@@ -204,22 +232,42 @@ hashtagScene.action(/delete_hashtag_(\d+)_(.+)/, async (ctx) => {
     if (adapter) {
       await adapter.close();
     }
-    ctx.scene.reenter(); // Перезаходим для обновления списка
+    ctx.scene.reenter();
   }
-});
+}
 
-// Кнопка Назад к проекту (выход из сцены хештегов)
-hashtagScene.action(/project_(\d+)/, async (ctx) => {
-  // TODO: Возможно, лучше переходить в projectScene, а не просто выходить?
-  // Пока просто выходим
+/**
+ * Обработчик кнопки Назад к проекту
+ */
+export async function handleBackToProjectAction(
+  ctx: ScraperBotContext & {
+    scene: { leave: () => void };
+    answerCbQuery: () => Promise<boolean>;
+    // match: RegExpExecArray; // match не нужен здесь, но может понадобиться для входа в projectScene
+  }
+) {
   await ctx.scene.leave();
-  // Можно добавить сообщение о возврате к проекту
   await ctx.reply("Возврат к управлению проектом...");
   await ctx.answerCbQuery();
-  // Вызываем команду /projects, чтобы инициировать projectScene
-  // Это не лучший способ, в идеале нужно ctx.scene.enter('project_scene_id')
-  // но для этого нужно передавать projectId или как-то его сохранять
-  // ctx.telegram.sendMessage(ctx.chat.id, '/projects'); // Не сработает корректно из callback
-});
+  // TODO: Рассмотреть ctx.scene.enter('instagram_scraper_projects') с передачей projectId
+}
+
+/**
+ * Сцена для управления хештегами проекта
+ */
+export const hashtagScene = new Scenes.BaseScene<
+  ScraperBotContext & { scene: { session: ScraperSceneSessionData } }
+>("instagram_scraper_hashtags");
+
+// Привязываем экспортированные обработчики к событиям сцены
+hashtagScene.enter(handleHashtagEnter);
+hashtagScene.action(/add_hashtag_(\d+)/, handleAddHashtagAction);
+hashtagScene.action(
+  /cancel_hashtag_input_(\d+)/,
+  handleCancelHashtagInputAction
+);
+hashtagScene.on("text", handleHashtagTextInput);
+hashtagScene.action(/delete_hashtag_(\d+)_(.+)/, handleDeleteHashtagAction);
+hashtagScene.action(/project_(\d+)/, handleBackToProjectAction);
 
 export default hashtagScene;

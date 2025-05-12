@@ -1,4 +1,4 @@
-import { Pool } from "pg";
+import { Pool, QueryResult } from "pg";
 import {
   StorageAdapter,
   User,
@@ -105,18 +105,6 @@ export class NeonAdapter implements StorageAdapter {
     }
   }
 
-  async addCompetitorAccount(
-    projectId: number,
-    username: string,
-    instagramUrl: string
-  ): Promise<Competitor> {
-    const res = await this.pool.query(
-      "INSERT INTO competitors (project_id, username, instagram_url) VALUES ($1, $2, $3) RETURNING *",
-      [projectId, username, instagramUrl]
-    );
-    return res.rows[0];
-  }
-
   async getCompetitorsByProjectId(projectId: number): Promise<Competitor[]> {
     const res = await this.pool.query(
       "SELECT * FROM competitors WHERE project_id = $1",
@@ -125,11 +113,21 @@ export class NeonAdapter implements StorageAdapter {
     return res.rows;
   }
 
-  async removeCompetitor(projectId: number, username: string): Promise<void> {
-    await this.pool.query(
-      "DELETE FROM competitors WHERE project_id = $1 AND username = $2",
-      [projectId, username]
-    );
+  async deleteCompetitorAccount(
+    projectId: number,
+    username: string
+  ): Promise<boolean> {
+    const pool = this.ensureConnection();
+    try {
+      const res = await pool.query(
+        "DELETE FROM Competitors WHERE project_id = $1 AND username = $2 RETURNING id",
+        [projectId, username]
+      );
+      return res.rowCount !== null && res.rowCount > 0;
+    } catch (error) {
+      console.error("Ошибка при удалении конкурента из Neon:", error);
+      return false;
+    }
   }
 
   async getUserByTelegramId(telegramId: number): Promise<User | null> {
@@ -144,14 +142,6 @@ export class NeonAdapter implements StorageAdapter {
     const res = await this.pool.query(
       "INSERT INTO users (telegram_id, username) VALUES ($1, $2) RETURNING *",
       [telegramId, username || null]
-    );
-    return res.rows[0];
-  }
-
-  async addHashtag(projectId: number, name: string): Promise<Hashtag> {
-    const res = await this.pool.query(
-      "INSERT INTO hashtags (project_id, hashtag) VALUES ($1, $2) RETURNING *",
-      [projectId, name]
     );
     return res.rows[0];
   }
@@ -286,5 +276,60 @@ export class NeonAdapter implements StorageAdapter {
       [targetType, targetId]
     );
     return res.rows;
+  }
+
+  // Получение хештегов по ID проекта
+  async getHashtagsByProjectId(projectId: number): Promise<Hashtag[] | null> {
+    const query =
+      "SELECT id, project_id, hashtag, created_at FROM hashtags WHERE project_id = $1 ORDER BY created_at DESC";
+    try {
+      const result: QueryResult<Hashtag> = await this.pool.query(query, [
+        projectId,
+      ]);
+      return result.rows;
+    } catch (error) {
+      console.error("Error fetching hashtags:", error);
+      return null;
+    }
+  }
+
+  // Добавление хештега к проекту
+  async addHashtag(
+    projectId: number,
+    hashtag: string
+  ): Promise<Hashtag | null> {
+    const query =
+      "INSERT INTO hashtags (project_id, hashtag) VALUES ($1, $2) RETURNING id, project_id, hashtag, created_at";
+    try {
+      const result: QueryResult<Hashtag> = await this.pool.query(query, [
+        projectId,
+        hashtag,
+      ]);
+      return result.rows[0] || null;
+    } catch (error) {
+      console.error("Error adding hashtag:", error);
+      return null;
+    }
+  }
+
+  // Добавление аккаунта конкурента
+  async addCompetitorAccount(
+    projectId: number,
+    username: string,
+    instagramUrl: string
+  ): Promise<Competitor | null> {
+    const query =
+      "INSERT INTO competitors (project_id, username, instagram_url) VALUES ($1, $2, $3) RETURNING *";
+    try {
+      const result: QueryResult<Competitor> = await this.pool.query(query, [
+        projectId,
+        username,
+        instagramUrl,
+      ]);
+      return result.rows[0] || null;
+    } catch (error) {
+      console.error("Error adding competitor account:", error);
+      return null;
+    }
   }
 }
