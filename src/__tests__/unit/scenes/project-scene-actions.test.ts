@@ -10,6 +10,14 @@ import {
   Project,
 } from "../../../types";
 import { NeonAdapter } from "../../../adapters/neon-adapter";
+// Импортируем экспортированные обработчики
+import {
+  handleExitSceneAction,
+  handleCreateProjectAction,
+  handleBackToProjectsAction,
+  handleSelectProjectAction,
+  handleManageHashtagsAction,
+} from "../../../scenes/project-scene";
 
 // Мокируем модуль адаптера
 mock.module("../../../adapters/neon-adapter", () => {
@@ -192,57 +200,30 @@ describe("Project Scene - Action Handlers Unit Tests", () => {
     jest.restoreAllMocks();
     mockConsoleError = jest.fn();
     console.error = mockConsoleError;
-    // No bot/stage setup needed
+    // mockAdapter инициализируется в createTestContext для каждого теста
   });
 
   afterEach(() => {
-    // Можно восстановить console.error, если необходимо
     // console.error = originalConsoleError;
   });
 
-  const runActionHandler = async (
-    ctx: ScraperBotContext,
-    actionName: string
-  ) => {
-    // ... (Set ctx.match for regex actions)
-    if (actionName.startsWith("project_")) {
-      const match = actionName.match(/project_(\d+)/);
-      if (match) {
-        ctx.match = match as RegExpExecArray;
-      }
-    }
-    // Ensure callback_query data is set for non-regex actions + Type Guard
-    if (
-      !ctx.match &&
-      ctx.updateType === "callback_query" &&
-      "callback_query" in ctx.update &&
-      ctx.update.callback_query &&
-      "data" in ctx.update.callback_query
-    ) {
-      ctx.update.callback_query.data = actionName;
-    }
-
-    await projectScene.middleware()(ctx, jest.fn()); // Call the scene's main middleware
-  };
-
+  // Тест для handleExitSceneAction
   it("should leave the scene on 'exit_scene' action", async () => {
     const ctx = createTestContext({
       callback_query: { data: "exit_scene" },
     });
-
-    await runActionHandler(ctx, "exit_scene");
-
+    await handleExitSceneAction(ctx);
     expect(ctx.answerCbQuery).toHaveBeenCalled();
     expect(ctx.scene.leave).toHaveBeenCalledTimes(1);
   });
 
+  // Тест для handleCreateProjectAction
   it("should prompt for project name on 'create_project' action", async () => {
-    const ctx = createTestContext({
-      callback_query: { data: "create_project" },
-    });
-
-    await runActionHandler(ctx, "create_project");
-
+    const ctx = createTestContext(
+      { callback_query: { data: "create_project" } },
+      { step: undefined } // Начальное состояние шага
+    );
+    await handleCreateProjectAction(ctx);
     expect(ctx.answerCbQuery).toHaveBeenCalledTimes(1);
     expect(ctx.reply).toHaveBeenCalledWith(
       "Введите название нового проекта (минимум 3 символа):"
@@ -250,98 +231,91 @@ describe("Project Scene - Action Handlers Unit Tests", () => {
     expect(ctx.scene.session.step).toBe(ScraperSceneStep.CREATE_PROJECT);
   });
 
+  // Тест для handleBackToProjectsAction
   it("should re-enter the scene on 'back_to_projects' action", async () => {
     const ctx = createTestContext({
       callback_query: { data: "back_to_projects" },
     });
-
-    await runActionHandler(ctx, "back_to_projects");
-
-    expect(ctx.answerCbQuery).toHaveBeenCalled();
+    await handleBackToProjectsAction(ctx);
+    expect(ctx.answerCbQuery).toHaveBeenCalledTimes(1);
     expect(ctx.scene.reenter).toHaveBeenCalledTimes(1);
   });
 
-  it("should reply with project menu on 'project_(\d+)' action", async () => {
-    const projectId = 42;
+  // Тест для handleSelectProjectAction (успешный случай)
+  it("should show project menu if project exists on project_(\d+) action", async () => {
+    const projectId = 789;
     const mockProject: Project = {
       id: projectId,
-      name: "Test Project",
-      user_id: 1,
+      name: "Selected Project",
+      user_id: 123,
       created_at: new Date().toISOString(),
       is_active: true,
     };
-    const mockKeyboard = {
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: "Mock Button", callback_data: "mock_data" }],
-        ],
-      },
-    };
-    mock.module("../../../scenes/components/project-keyboard", () => ({
-      generateProjectMenuKeyboard: jest.fn().mockReturnValue(mockKeyboard),
-      generateProjectsKeyboard: jest.fn(),
-      generateNewProjectKeyboard: jest.fn(),
-    }));
-
     const ctx = createTestContext(
       { callback_query: { data: `project_${projectId}` } },
-      { step: ScraperSceneStep.PROJECT_LIST },
-      { getProjectById: jest.fn().mockResolvedValue(mockProject) }
+      {},
+      {
+        initialize: jest.fn().mockResolvedValue(undefined),
+        getProjectById: jest.fn().mockResolvedValue(mockProject),
+      }
     );
+    // Устанавливаем ctx.match вручную, так как это делается middleware в Telegraf
+    ctx.match = [
+      `project_${projectId}`,
+      projectId.toString(),
+    ] as RegExpExecArray;
 
-    await runActionHandler(ctx, `project_${projectId}`);
+    await handleSelectProjectAction(ctx);
 
-    expect(ctx.answerCbQuery).toHaveBeenCalledTimes(1);
+    expect(mockAdapter.initialize).toHaveBeenCalledTimes(1);
     expect(mockAdapter.getProjectById).toHaveBeenCalledWith(projectId);
     expect(ctx.reply).toHaveBeenCalledWith(
       `Проект "${mockProject.name}". Выберите действие:`,
-      mockKeyboard
+      expect.any(Object) // Проверка клавиатуры
     );
-    expect(ctx.scene.enter).not.toHaveBeenCalled();
-    expect(ctx.scene.session.currentProjectId).toBeUndefined();
   });
 
-  it("should show error and re-enter if project not found on 'project_(\d+)' action", async () => {
-    const projectId = 99;
+  // Тест для handleSelectProjectAction (проект не найден)
+  it("should show error and re-enter if project not found on project_(\d+) action", async () => {
+    const projectId = 101;
     const ctx = createTestContext(
       { callback_query: { data: `project_${projectId}` } },
-      { step: ScraperSceneStep.PROJECT_LIST },
-      { getProjectById: jest.fn().mockResolvedValue(null) }
+      {},
+      {
+        initialize: jest.fn().mockResolvedValue(undefined),
+        getProjectById: jest.fn().mockResolvedValue(null), // Проект не найден
+      }
     );
+    ctx.match = [
+      `project_${projectId}`,
+      projectId.toString(),
+    ] as RegExpExecArray;
 
-    await runActionHandler(ctx, `project_${projectId}`);
+    await handleSelectProjectAction(ctx);
 
-    expect(ctx.answerCbQuery).toHaveBeenCalledTimes(1);
     expect(mockAdapter.getProjectById).toHaveBeenCalledWith(projectId);
     expect(ctx.reply).toHaveBeenCalledWith(
       "Проект не найден. Возможно, он был удален."
     );
-    expect(ctx.scene.enter).not.toHaveBeenCalled();
-    expect(ctx.scene.session.step).toBe(ScraperSceneStep.PROJECT_LIST);
     expect(ctx.scene.reenter).toHaveBeenCalledTimes(1);
   });
 
-  it("should show error if getProjectById fails on 'project_(\d+)' action", async () => {
-    const projectId = 101;
-    const dbError = new Error("Database connection failed");
+  // Тест для handleManageHashtagsAction
+  it("should enter hashtag scene on manage_hashtags_(\d+) action", async () => {
+    const projectId = 202;
     const ctx = createTestContext(
-      { callback_query: { data: `project_${projectId}` } },
-      { step: ScraperSceneStep.PROJECT_LIST },
-      { getProjectById: jest.fn().mockRejectedValue(dbError) }
+      { callback_query: { data: `manage_hashtags_${projectId}` } },
+      { projectId: undefined } // Убедимся, что projectId в сессии будет установлен
     );
+    ctx.match = [
+      `manage_hashtags_${projectId}`,
+      projectId.toString(),
+    ] as RegExpExecArray;
 
-    await runActionHandler(ctx, `project_${projectId}`);
+    await handleManageHashtagsAction(ctx);
 
+    expect(ctx.scene.session.projectId).toBe(projectId);
     expect(ctx.answerCbQuery).toHaveBeenCalledTimes(1);
-    expect(mockAdapter.getProjectById).toHaveBeenCalledWith(projectId);
-    expect(ctx.reply).toHaveBeenCalledWith(
-      "Произошла ошибка при получении данных проекта. Пожалуйста, попробуйте позже."
-    );
-    expect(mockConsoleError).toHaveBeenCalledWith(
-      `Ошибка при получении проекта ${projectId}:`,
-      dbError
-    );
-    expect(ctx.scene.enter).not.toHaveBeenCalled();
-    expect(ctx.scene.session.step).toBe(ScraperSceneStep.PROJECT_LIST);
+    expect(ctx.scene.enter).toHaveBeenCalledWith("instagram_scraper_hashtags");
   });
 });

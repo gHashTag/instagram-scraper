@@ -62,19 +62,19 @@ describe("Project Keyboard", () => {
 
     expect(keyboard.reply_markup.inline_keyboard).toHaveLength(5); // 5 кнопок
     expect(keyboard.reply_markup.inline_keyboard[0][0].text).toBe(
-      "Добавить конкурента"
+      "👥 Управлять конкурентами"
     );
     expect(keyboard.reply_markup.inline_keyboard[1][0].text).toBe(
-      "Добавить хэштег"
+      "📊 Управлять хештегами"
     );
     expect(keyboard.reply_markup.inline_keyboard[2][0].text).toBe(
-      "Запустить скрапинг"
+      "▶️ Запустить скрапинг (TODO)"
     );
     expect(keyboard.reply_markup.inline_keyboard[3][0].text).toBe(
-      "Просмотреть Reels"
+      "👀 Просмотреть Reels (TODO)"
     );
     expect(keyboard.reply_markup.inline_keyboard[4][0].text).toBe(
-      "Назад к проектам"
+      "🔙 Назад к проектам"
     );
   });
 
@@ -84,13 +84,13 @@ describe("Project Keyboard", () => {
 
     expect(keyboard.reply_markup.inline_keyboard).toHaveLength(3);
     expect(keyboard.reply_markup.inline_keyboard[0][0].text).toBe(
-      "К списку проектов"
+      "🔙 К списку проектов"
     );
     expect(keyboard.reply_markup.inline_keyboard[1][0].text).toBe(
-      "Добавить конкурента"
+      "👥 Добавить конкурента"
     );
     expect(keyboard.reply_markup.inline_keyboard[2][0].text).toBe(
-      "Добавить хэштег"
+      "📊 Добавить хештег"
     );
   });
 });

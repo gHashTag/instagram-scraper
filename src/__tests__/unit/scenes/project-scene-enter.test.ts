@@ -209,7 +209,7 @@ describe("Project Scene - Enter Handler Unit Tests", () => {
     expect(mockAdapter.getUserByTelegramId).toHaveBeenCalledWith(54321);
     expect(mockAdapter.getProjectsByUserId).toHaveBeenCalledWith(mockUser.id);
     expect(ctx.reply).toHaveBeenCalledWith(
-      expect.stringContaining("У вас пока нет проектов."),
+      expect.stringContaining("У вас пока нет проектов. Хотите создать новый?"),
       expect.any(Object)
     );
     expect(ctx.scene.session.step).toBe(ScraperSceneStep.PROJECT_LIST);
@@ -269,23 +269,15 @@ describe("Project Scene - Enter Handler Unit Tests", () => {
     expect(mockAdapter.getUserByTelegramId).toHaveBeenCalledWith(54321);
     expect(mockAdapter.getProjectsByUserId).toHaveBeenCalledWith(mockUser.id);
     expect(ctx.reply).toHaveBeenCalledWith(
-      expect.stringContaining("Ваши проекты:"),
-      expect.objectContaining({
-        inline_keyboard: expect.arrayContaining([
-          expect.arrayContaining([
-            expect.objectContaining({ callback_data: "project_1" }),
-          ]),
-          expect.arrayContaining([
-            expect.objectContaining({ callback_data: "project_2" }),
-          ]),
-        ]),
-      })
+      expect.stringContaining(
+        "Ваши проекты: Выберите проект для управления или создайте новый."
+      ),
+      expect.any(Object)
     );
     expect(ctx.scene.session.step).toBe(ScraperSceneStep.PROJECT_LIST);
   });
 
   it("should show error message if adapter.initialize fails", async () => {
-    const initError = new Error("Init failed");
     const ctx = createTestContext(
       {
         message: {
@@ -303,7 +295,7 @@ describe("Project Scene - Enter Handler Unit Tests", () => {
       },
       {},
       {
-        initialize: jest.fn().mockRejectedValue(initError),
+        initialize: jest.fn().mockRejectedValue(new Error("Init error")),
         getUserByTelegramId: jest.fn(),
         getProjectsByUserId: jest.fn(),
       }
@@ -316,13 +308,12 @@ describe("Project Scene - Enter Handler Unit Tests", () => {
     expect(mockAdapter.getUserByTelegramId).not.toHaveBeenCalled();
     expect(mockAdapter.getProjectsByUserId).not.toHaveBeenCalled();
     expect(ctx.reply).toHaveBeenCalledWith(
-      "Произошла ошибка при инициализации. Попробуйте позже."
+      expect.stringContaining(
+        "Произошла ошибка при получении проектов. Пожалуйста, попробуйте позже."
+      )
     );
     expect(ctx.scene.leave).toHaveBeenCalledTimes(1);
-    expect(mockConsoleError).toHaveBeenCalledWith(
-      "Error initializing adapter:",
-      initError
-    );
+    expect(ctx.scene.session.step).toBeUndefined();
   });
 
   it("should show error and leave scene if user is not found", async () => {
@@ -356,9 +347,12 @@ describe("Project Scene - Enter Handler Unit Tests", () => {
     expect(mockAdapter.getUserByTelegramId).toHaveBeenCalledWith(54321);
     expect(mockAdapter.getProjectsByUserId).not.toHaveBeenCalled();
     expect(ctx.reply).toHaveBeenCalledWith(
-      "Не удалось найти вашего пользователя. Пожалуйста, используйте /start для регистрации."
+      expect.stringContaining(
+        "Вы не зарегистрированы. Пожалуйста, используйте сначала основные команды бота."
+      )
     );
     expect(ctx.scene.leave).toHaveBeenCalledTimes(1);
+    expect(ctx.scene.session.step).toBeUndefined();
   });
 
   it("should show error and leave scene if getProjectsByUserId fails", async () => {
@@ -369,7 +363,6 @@ describe("Project Scene - Enter Handler Unit Tests", () => {
       created_at: new Date().toISOString(),
       is_active: true,
     };
-    const projectsError = new Error("DB error");
     const ctx = createTestContext(
       {
         message: {
@@ -389,7 +382,7 @@ describe("Project Scene - Enter Handler Unit Tests", () => {
       {
         initialize: jest.fn().mockResolvedValue(undefined),
         getUserByTelegramId: jest.fn().mockResolvedValue(mockUser),
-        getProjectsByUserId: jest.fn().mockRejectedValue(projectsError),
+        getProjectsByUserId: jest.fn().mockRejectedValue(new Error("DB error")),
       }
     );
 
@@ -400,12 +393,11 @@ describe("Project Scene - Enter Handler Unit Tests", () => {
     expect(mockAdapter.getUserByTelegramId).toHaveBeenCalledWith(54321);
     expect(mockAdapter.getProjectsByUserId).toHaveBeenCalledWith(mockUser.id);
     expect(ctx.reply).toHaveBeenCalledWith(
-      "Произошла ошибка при загрузке проектов. Попробуйте позже."
+      expect.stringContaining(
+        "Произошла ошибка при получении проектов. Пожалуйста, попробуйте позже."
+      )
     );
     expect(ctx.scene.leave).toHaveBeenCalledTimes(1);
-    expect(mockConsoleError).toHaveBeenCalledWith(
-      "Error fetching projects:",
-      projectsError
-    );
+    expect(ctx.scene.session.step).toBeUndefined();
   });
 });

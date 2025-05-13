@@ -323,29 +323,27 @@ describe("competitorScene - Enter Handler", () => {
     // Исправляем проверку ctx.reply
     const replyCalls = (ctx.reply as jest.Mock).mock.calls;
     expect(replyCalls.length).toBe(1);
-    expect(replyCalls[0][0]).toContain('Конкуренты в проекте \"Test Project\"');
-    expect(replyCalls[0][1]).toEqual(
-      expect.objectContaining({
-        parse_mode: "Markdown",
-        reply_markup: {
-          inline_keyboard: [
-            [
-              {
-                text: "🗑️ Удалить test_competitor",
-                callback_data: "delete_competitor_1_test_competitor",
-              },
-            ],
-            [
-              {
-                text: "Добавить конкурента",
-                callback_data: "add_competitor_1",
-              },
-            ],
-            [{ text: "Выйти", callback_data: "exit_scene" }],
-          ],
-        },
-      })
+    expect(replyCalls[0][0]).toContain(
+      `Конкуренты в проекте "${projectMock.name}"`
     );
+    expect(replyCalls[0][1]).toEqual({
+      parse_mode: "Markdown",
+      reply_markup: Markup.inlineKeyboard([
+        [
+          Markup.button.callback(
+            `🗑️ Удалить ${competitorMock.username}`,
+            `delete_competitor_${projectMock.id}_${competitorMock.username}`
+          ),
+        ],
+        [
+          Markup.button.callback(
+            "Добавить конкурента",
+            `add_competitor_${projectMock.id}`
+          ),
+        ],
+        [Markup.button.callback("Выйти", "exit_scene")],
+      ]).reply_markup, // Markup.inlineKeyboard(...).reply_markup дает { inline_keyboard: [...] }
+    });
     expect(mockNeonAdapterInstance.close).toHaveBeenCalledTimes(1);
     expect(ctx.scene.leave).not.toHaveBeenCalled();
   });

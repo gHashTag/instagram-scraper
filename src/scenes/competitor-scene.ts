@@ -166,10 +166,14 @@ competitorScene.enter(async (ctx) => {
   }
 });
 
-// Обработка выбора проекта для просмотра конкурентов
-competitorScene.action(/competitors_project_(\d+)/, async (ctx) => {
+/**
+ * Обработчик выбора проекта для просмотра конкурентов
+ */
+export async function handleCompetitorsProjectAction(
+  ctx: ScraperBotContext & { match: RegExpExecArray }
+) {
   const adapter = ctx.storage as NeonAdapter;
-  const projectId = parseInt(ctx.match[1]);
+  const projectId = parseInt(ctx.match![1]); // ctx.match гарантированно есть по логике action
 
   try {
     await adapter.initialize();
@@ -237,35 +241,46 @@ competitorScene.action(/competitors_project_(\d+)/, async (ctx) => {
   }
 
   await ctx.answerCbQuery();
-});
+}
 
-// Инициирование добавления нового конкурента
-competitorScene.action(/add_competitor_(\d+)/, async (ctx) => {
-  // Здесь адаптер не используется напрямую, только сессия
-  const projectId = parseInt(ctx.match[1]);
+/**
+ * Обработчик инициирования добавления нового конкурента
+ */
+export async function handleAddCompetitorAction(
+  ctx: ScraperBotContext & { match: RegExpExecArray }
+) {
+  const projectId = parseInt(ctx.match![1]);
 
-  // Проверка на NaN
   if (isNaN(projectId)) {
-    console.error(`Invalid projectId parsed from action: ${ctx.match[1]}`);
+    console.error(`Invalid projectId parsed from action: ${ctx.match![1]}`);
     await ctx.reply(
       "Ошибка выбора проекта. Пожалуйста, вернитесь назад и выберите проект снова."
     );
     await ctx.answerCbQuery();
-    return; // Выход
+    return;
   }
 
   ctx.scene.session.projectId = projectId;
-
   await ctx.reply(
     "Введите Instagram URL конкурента (например, https://www.instagram.com/example):"
   );
   ctx.scene.session.step = ScraperSceneStep.ADD_COMPETITOR;
-
   await ctx.answerCbQuery();
-});
+}
 
-// Обработка текстовых сообщений
-competitorScene.on("text", async (ctx) => {
+/**
+ * Обработчик текстовых сообщений для competitorScene
+ */
+export async function handleCompetitorText(
+  ctx: ScraperBotContext & {
+    scene: {
+      session: ScraperSceneSessionData;
+      leave: () => void;
+      reenter: () => void;
+    };
+    message: { text: string };
+  }
+) {
   const adapter = ctx.storage as NeonAdapter;
   if (ctx.scene.session.step === ScraperSceneStep.ADD_COMPETITOR) {
     const instagramUrl = ctx.message.text.trim();
@@ -275,21 +290,18 @@ competitorScene.on("text", async (ctx) => {
 
     if (!projectId) {
       await ctx.reply("Ошибка: не указан проект. Начните сначала.");
-      return ctx.scene.reenter();
+      return ctx.scene.reenter(); // Используем reenter, чтобы пользователь мог попробовать снова в той же сцене
     }
 
-    // Простая проверка URL, можно улучшить
     if (!instagramUrl.toLowerCase().includes("instagram.com/")) {
       await ctx.reply(
         "Пожалуйста, введите корректный URL Instagram-аккаунта (например, https://www.instagram.com/example):"
       );
-      return; // Явный выход, если URL некорректен
+      return;
     }
 
     try {
       await adapter.initialize();
-
-      // Проверка пользователя ПЕРЕД добавлением конкурента
       user = await adapter.getUserByTelegramId(ctx.from?.id || 0);
       if (!user) {
         console.error(
@@ -299,15 +311,12 @@ competitorScene.on("text", async (ctx) => {
           "Ошибка: Пользователь не найден. Пожалуйста, используйте /start."
         );
         ctx.scene.session.step = undefined;
-        await adapter.close(); // Закрываем адаптер здесь
-        return ctx.scene.leave(); // Выходим из сцены
+        // await adapter.close(); // Закрываем в finally
+        return ctx.scene.leave();
       }
 
-      // Извлекаем имя пользователя из URL
       let username = instagramUrl.substring(instagramUrl.lastIndexOf("/") + 1);
-      // Убираем возможные параметры из URL типа ?igshid=...
       username = username.split("?")[0];
-      // Убираем возможный слеш в конце
       if (username.endsWith("/")) {
         username = username.slice(0, -1);
       }
@@ -316,7 +325,7 @@ competitorScene.on("text", async (ctx) => {
         await ctx.reply(
           "Не удалось извлечь имя пользователя из URL. Пожалуйста, проверьте URL и попробуйте снова."
         );
-        return; // Явный выход
+        return;
       }
 
       const competitor = await adapter.addCompetitorAccount(
@@ -345,54 +354,62 @@ competitorScene.on("text", async (ctx) => {
         await ctx.reply(successMessage, {
           reply_markup: successKeyboard.reply_markup,
         });
-        if (adapter && typeof adapter.close === "function") {
-          await adapter.close();
-        }
       } else {
         const errorMessage = `Не удалось добавить конкурента @${username}. Возможно, он уже добавлен или произошла ошибка базы данных.`;
         await ctx.reply(errorMessage);
-        if (adapter && typeof adapter.close === "function") {
-          await adapter.close();
-        }
       }
-
-      ctx.scene.session.step = undefined; // Сбрасываем шаг
-      return; // Явный выход после успешной обработки или ошибки добавления
+      ctx.scene.session.step = undefined;
     } catch (error) {
       console.error("Ошибка при добавлении конкурента в сцене:", error);
       await ctx.reply(
         "Произошла внутренняя ошибка при добавлении конкурента. Попробуйте позже."
       );
-      ctx.scene.session.step = undefined; // Сбрасываем шаг на всякий случай
+      ctx.scene.session.step = undefined;
+    } finally {
       if (adapter && typeof adapter.close === "function") {
-        // Закрываем адаптер в catch
         await adapter.close();
       }
-      return; // Явный выход в случае ошибки
     }
   } else {
-    // Если шаг не ADD_COMPETITOR, то ничего не делаем или переходим в начало
-    // Для явности можно добавить return или специфическое поведение
-    return; // Явный выход, если шаг не соответствует
+    return;
   }
-});
+}
 
-// Обработка кнопки "Выйти"
-competitorScene.action("exit_scene", async (ctx) => {
+// Обработка текстовых сообщений
+competitorScene.on("text", handleCompetitorText);
+
+/**
+ * Обработчик кнопки "Выйти"
+ */
+export async function handleExitCompetitorSceneAction(ctx: ScraperBotContext) {
   await ctx.reply("Вы вышли из режима управления конкурентами.", {
     reply_markup: { remove_keyboard: true },
   });
   await ctx.scene.leave();
   await ctx.answerCbQuery();
-});
+}
 
-// Обработка кнопки "Назад к проектам" (возврат к началу текущей сцены для выбора проекта)
-competitorScene.action("back_to_projects", async (ctx) => {
+/**
+ * Обработчик кнопки "Назад к проектам"
+ */
+export async function handleBackToProjectsCompetitorAction(
+  ctx: ScraperBotContext
+) {
   await ctx.scene.reenter();
   await ctx.answerCbQuery();
-});
+}
 
-// Обработка удаления конкурента - использует экспортированный обработчик
+// Регистрация обработчиков в сцене
+competitorScene.action(
+  /competitors_project_(\d+)/,
+  handleCompetitorsProjectAction
+);
+competitorScene.action(/add_competitor_(\d+)/, handleAddCompetitorAction);
+competitorScene.action("exit_scene", handleExitCompetitorSceneAction);
+competitorScene.action(
+  "back_to_projects",
+  handleBackToProjectsCompetitorAction
+);
 competitorScene.action(
   /delete_competitor_(\d+)_(.+)/,
   handleDeleteCompetitorAction

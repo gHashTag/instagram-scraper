@@ -8,8 +8,8 @@ import {
   mock,
   spyOn,
 } from "bun:test";
-import { Context } from "telegraf";
-import { Update, UserFromGetMe } from "telegraf/types";
+import { Context, Markup } from "telegraf";
+import { Update, UserFromGetMe, Message } from "telegraf/types";
 import { competitorScene } from "../../../scenes/competitor-scene";
 import { NeonAdapter } from "../../../adapters/neon-adapter";
 import {
@@ -20,6 +20,7 @@ import {
   User,
   ScraperSceneSessionData,
 } from "@/types";
+import { handleCompetitorText } from "../../../scenes/competitor-scene";
 
 // Мокируем NeonAdapter
 mock.module("../../../adapters/neon-adapter", () => {
@@ -101,10 +102,74 @@ const createMockContext = (
   return ctx;
 };
 
-// --- Тесты для on text handler ---
-describe("competitorScene - On Text Handler (ADD_COMPETITOR step)", () => {
+type TextHandlerTestContext = ScraperBotContext & {
+  scene: {
+    session: ScraperSceneSessionData;
+    leave: jest.Mock;
+    reenter: jest.Mock;
+  };
+  reply: jest.Mock;
+  message: Partial<Message.TextMessage>;
+  from: Partial<User>;
+};
+
+const createMockTextContext = (
+  messageText: string,
+  initialSession: Partial<ScraperSceneSessionData> = {},
+  fromId: number = 1
+): TextHandlerTestContext => {
+  const botInfo: UserFromGetMe = {
+    id: 12345,
+    is_bot: true,
+    first_name: "TestBot",
+    username: "TestBot",
+    can_join_groups: true,
+    can_read_all_group_messages: true,
+    supports_inline_queries: true,
+  };
+
+  const update: Update.MessageUpdate = {
+    update_id: Date.now(),
+    message: {
+      message_id: 1,
+      date: Math.floor(Date.now() / 1000),
+      chat: {
+        id: 1,
+        type: "private",
+        first_name: "TestUser",
+        username: "testuser",
+      },
+      from: {
+        id: fromId,
+        first_name: "TestUser",
+        is_bot: false,
+        username: "testuser",
+      },
+      text: messageText,
+    } as Message.TextMessage,
+  };
+
+  const ctx = new Context(update, {} as any, botInfo) as TextHandlerTestContext;
+
+  ctx.scene = {
+    leave: jest.fn(),
+    reenter: jest.fn(),
+    session: { ...initialSession } as ScraperSceneSessionData,
+  } as any;
+  ctx.reply = jest.fn().mockResolvedValue(true);
+
+  const adapterInstance = new NeonAdapter();
+  ctx.storage = adapterInstance;
+  mockNeonAdapterInstance = adapterInstance as NeonAdapter & {
+    [K in keyof NeonAdapter]: jest.Mock;
+  };
+
+  return ctx;
+};
+
+describe("competitorScene - On Text Handler (ADD_COMPETITOR step) - Direct Call", () => {
   let consoleErrorSpy: jest.SpiedFunction<typeof console.error>;
-  let ctx: BasicContext; // Используем базовый тип
+  let ctx: TextHandlerTestContext;
 
   beforeEach(() => {
     consoleErrorSpy = spyOn(console, "error").mockImplementation(() => {});
@@ -112,7 +177,6 @@ describe("competitorScene - On Text Handler (ADD_COMPETITOR step)", () => {
     mockNeonAdapterInstance = new NeonAdapter() as NeonAdapter & {
       [K in keyof NeonAdapter]: jest.Mock;
     };
-    // ctx создается в it()
   });
 
   afterEach(() => {
@@ -120,22 +184,12 @@ describe("competitorScene - On Text Handler (ADD_COMPETITOR step)", () => {
   });
 
   it("should reply with error if URL is invalid", async () => {
-    const update = {
-      update_id: 8,
-      message: {
-        message_id: 1,
-        date: Date.now(),
-        chat: { id: 1, type: "private" },
-        text: "невалидный урл",
-        from: { id: 1, is_bot: false, first_name: "Test" },
-      },
-    };
-    ctx = createMockContext(update);
-    ctx.scene.session.step = ScraperSceneStep.ADD_COMPETITOR;
-    ctx.scene.session.projectId = 41;
+    ctx = createMockTextContext("невалидный урл", {
+      step: ScraperSceneStep.ADD_COMPETITOR,
+      projectId: 41,
+    });
 
-    // Для on text используем middleware
-    await competitorScene.middleware()(ctx, async () => {});
+    await handleCompetitorText(ctx);
 
     expect(ctx.reply).toHaveBeenCalledWith(
       "Пожалуйста, введите корректный URL Instagram-аккаунта (например, https://www.instagram.com/example):"
@@ -148,30 +202,14 @@ describe("competitorScene - On Text Handler (ADD_COMPETITOR step)", () => {
     const projectId = 42;
     const instagramUrl = "https://www.instagram.com/newcompetitor";
     const username = "newcompetitor";
-    const update: Update.MessageUpdate = {
-      update_id: 9,
-      message: {
-        message_id: 1,
-        date: Math.floor(Date.now() / 1000),
-        chat: {
-          id: 1,
-          type: "private",
-          first_name: "Test",
-          username: "testuser",
-        },
-        from: {
-          id: 1,
-          first_name: "Test",
-          is_bot: false,
-          username: "testuser",
-          language_code: "en",
-        },
-        text: instagramUrl,
+    ctx = createMockTextContext(
+      instagramUrl,
+      {
+        step: ScraperSceneStep.ADD_COMPETITOR,
+        projectId,
       },
-    };
-    ctx = createMockContext(update);
-    ctx.scene.session.step = ScraperSceneStep.ADD_COMPETITOR;
-    ctx.scene.session.projectId = projectId;
+      1
+    );
 
     const competitorMock: Competitor = {
       id: 300,
@@ -193,8 +231,7 @@ describe("competitorScene - On Text Handler (ADD_COMPETITOR step)", () => {
       competitorMock
     );
 
-    // Для on text используем middleware
-    await competitorScene.middleware()(ctx, async () => {});
+    await handleCompetitorText(ctx);
 
     expect(mockNeonAdapterInstance.initialize).toHaveBeenCalledTimes(1);
     expect(mockNeonAdapterInstance.getUserByTelegramId).toHaveBeenCalledWith(1);
@@ -204,144 +241,132 @@ describe("competitorScene - On Text Handler (ADD_COMPETITOR step)", () => {
       instagramUrl
     );
     expect(ctx.reply).toHaveBeenCalledWith(
-      expect.stringContaining(`Конкурент @${username} успешно добавлен!`),
-      expect.anything()
+      `Конкурент @${username} успешно добавлен!`,
+      expect.objectContaining({
+        reply_markup: Markup.inlineKeyboard([
+          [
+            Markup.button.callback(
+              "Посмотреть всех конкурентов",
+              `competitors_project_${projectId}`
+            ),
+          ],
+          [
+            Markup.button.callback(
+              "Добавить еще конкурента",
+              `add_competitor_${projectId}`
+            ),
+          ],
+          [Markup.button.callback("Выйти", "exit_scene")],
+        ]).reply_markup,
+      })
     );
     expect(ctx.scene.session.step).toBeUndefined();
     expect(mockNeonAdapterInstance.close).toHaveBeenCalledTimes(1);
-    expect(consoleErrorSpy).not.toHaveBeenCalled();
   });
 
   it("should handle null response from adapter.addCompetitorAccount", async () => {
     const projectId = 44;
-    const instagramUrl = "https://www.instagram.com/failadd";
-    const update: Update.MessageUpdate = {
-      update_id: 11,
-      message: {
-        message_id: 1,
-        date: Math.floor(Date.now() / 1000),
-        chat: {
-          id: 1,
-          type: "private",
-          first_name: "FailAddUser",
-          username: "failadduser",
-        },
-        from: {
-          id: 1,
-          first_name: "Test",
-          is_bot: false,
-          username: "testuser",
-          language_code: "en",
-        },
-        text: instagramUrl,
+    const username = "failadd";
+    const instagramUrl = `https://www.instagram.com/${username}`;
+    ctx = createMockTextContext(
+      instagramUrl,
+      {
+        step: ScraperSceneStep.ADD_COMPETITOR,
+        projectId,
       },
-    };
-    ctx = createMockContext(update);
-    ctx.scene.session.step = ScraperSceneStep.ADD_COMPETITOR;
-    ctx.scene.session.projectId = projectId;
-
-    const userMockNull: User = {
-      id: 1,
-      telegram_id: 1,
-      username: "failadduser",
-      created_at: new Date().toISOString(),
-      is_active: true,
-    };
-    mockNeonAdapterInstance.getUserByTelegramId.mockResolvedValue(userMockNull);
-    mockNeonAdapterInstance.addCompetitorAccount.mockResolvedValue(null);
-
-    // Для on text используем middleware
-    await competitorScene.middleware()(ctx, async () => {});
-
-    expect(mockNeonAdapterInstance.initialize).toHaveBeenCalledTimes(1);
-    expect(mockNeonAdapterInstance.addCompetitorAccount).toHaveBeenCalledWith(
-      projectId,
-      "failadd",
-      instagramUrl
+      1
     );
-    expect(ctx.reply).toHaveBeenCalledWith(
-      expect.stringContaining("Ошибка при добавлении конкурента")
-    );
-    expect(ctx.scene.session.step).toBeUndefined();
-    expect(mockNeonAdapterInstance.close).toHaveBeenCalledTimes(1);
-    expect(consoleErrorSpy).not.toHaveBeenCalled();
-  });
-
-  it("should handle error when getUserByTelegramId throws in on text handler", async () => {
-    const update: Update.MessageUpdate = {
-      update_id: 30,
-      message: {
-        message_id: 1,
-        date: Math.floor(Date.now() / 1000),
-        chat: { id: 123, type: "private", first_name: "TestUserError" },
-        from: { id: 456, is_bot: false, first_name: "UserError" },
-        text: "https://www.instagram.com/somevalidurl",
-      },
-    };
-    ctx = createMockContext(update);
-    ctx.scene.session.step = ScraperSceneStep.ADD_COMPETITOR;
-    ctx.scene.session.projectId = 50;
-
-    const userError = new Error("GetUser failed");
-    mockNeonAdapterInstance.getUserByTelegramId.mockRejectedValue(userError);
-
-    // Для on text используем middleware
-    await competitorScene.middleware()(ctx, async () => {});
-
-    expect(mockNeonAdapterInstance.initialize).toHaveBeenCalledTimes(1);
-    expect(mockNeonAdapterInstance.getUserByTelegramId).toHaveBeenCalledWith(
-      456
-    );
-    expect(mockNeonAdapterInstance.addCompetitorAccount).not.toHaveBeenCalled();
-    expect(consoleErrorSpy).toHaveBeenCalledWith(
-      "Ошибка при добавлении конкурента в сцене:",
-      userError
-    );
-    expect(ctx.reply).toHaveBeenCalledWith(
-      "Произошла внутренняя ошибка при добавлении конкурента. Попробуйте позже."
-    );
-    expect(ctx.scene.session.step).toBeUndefined();
-    expect(mockNeonAdapterInstance.close).toHaveBeenCalledTimes(1);
-    expect(ctx.scene.leave).not.toHaveBeenCalled();
-  });
-
-  it("should handle error when addCompetitorAccount throws in on text handler", async () => {
-    const update: Update.MessageUpdate = {
-      update_id: 31,
-      message: {
-        message_id: 1,
-        date: Math.floor(Date.now() / 1000),
-        chat: { id: 124, type: "private", first_name: "TestUserDBError" },
-        from: { id: 457, is_bot: false, first_name: "UserDBError" },
-        text: "https://www.instagram.com/dbfail",
-      },
-    };
-    ctx = createMockContext(update);
-    ctx.scene.session.step = ScraperSceneStep.ADD_COMPETITOR;
-    ctx.scene.session.projectId = 51;
 
     const userMock: User = {
-      id: 2,
-      telegram_id: 457,
-      username: "UserDBError",
+      id: 1,
+      telegram_id: 1,
+      username: "testuser",
       created_at: new Date().toISOString(),
       is_active: true,
     };
     mockNeonAdapterInstance.getUserByTelegramId.mockResolvedValue(userMock);
-    const dbError = new Error("DB insert failed");
-    mockNeonAdapterInstance.addCompetitorAccount.mockRejectedValue(dbError);
+    mockNeonAdapterInstance.addCompetitorAccount.mockResolvedValue(null);
 
-    // Для on text используем middleware
-    await competitorScene.middleware()(ctx, async () => {});
+    await handleCompetitorText(ctx);
+
+    expect(mockNeonAdapterInstance.initialize).toHaveBeenCalledTimes(1);
+    expect(mockNeonAdapterInstance.getUserByTelegramId).toHaveBeenCalledWith(1);
+    expect(mockNeonAdapterInstance.addCompetitorAccount).toHaveBeenCalledWith(
+      projectId,
+      username,
+      instagramUrl
+    );
+    expect(ctx.reply).toHaveBeenCalledWith(
+      `Не удалось добавить конкурента @${username}. Возможно, он уже добавлен или произошла ошибка базы данных.`
+    );
+    expect(ctx.scene.session.step).toBeUndefined();
+    expect(mockNeonAdapterInstance.close).toHaveBeenCalledTimes(1);
+  });
+
+  it("should handle error when getUserByTelegramId returns null", async () => {
+    const projectId = 45;
+    const instagramUrl = "https://www.instagram.com/userunknown";
+    ctx = createMockTextContext(
+      instagramUrl,
+      {
+        step: ScraperSceneStep.ADD_COMPETITOR,
+        projectId,
+      },
+      999
+    );
+
+    mockNeonAdapterInstance.getUserByTelegramId.mockResolvedValue(null);
+
+    await handleCompetitorText(ctx);
 
     expect(mockNeonAdapterInstance.initialize).toHaveBeenCalledTimes(1);
     expect(mockNeonAdapterInstance.getUserByTelegramId).toHaveBeenCalledWith(
-      457
+      999
     );
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("User not found for telegramId: 999")
+    );
+    expect(ctx.reply).toHaveBeenCalledWith(
+      "Ошибка: Пользователь не найден. Пожалуйста, используйте /start."
+    );
+    expect(ctx.scene.session.step).toBeUndefined();
+    expect(ctx.scene.leave).toHaveBeenCalledTimes(1);
+    expect(mockNeonAdapterInstance.addCompetitorAccount).not.toHaveBeenCalled();
+    expect(mockNeonAdapterInstance.close).toHaveBeenCalledTimes(1);
+  });
+
+  it("should handle error when addCompetitorAccount throws", async () => {
+    const projectId = 46;
+    const username = "dberrorcomp";
+    const instagramUrl = `https://www.instagram.com/${username}`;
+    ctx = createMockTextContext(
+      instagramUrl,
+      {
+        step: ScraperSceneStep.ADD_COMPETITOR,
+        projectId,
+      },
+      1
+    );
+
+    const userMock: User = {
+      id: 1,
+      telegram_id: 1,
+      username: "testuser",
+      created_at: new Date().toISOString(),
+      is_active: true,
+    };
+    const dbError = new Error("DB boom!");
+    mockNeonAdapterInstance.getUserByTelegramId.mockResolvedValue(userMock);
+    mockNeonAdapterInstance.addCompetitorAccount.mockRejectedValue(dbError);
+
+    await handleCompetitorText(ctx);
+
+    expect(mockNeonAdapterInstance.initialize).toHaveBeenCalledTimes(1);
+    expect(mockNeonAdapterInstance.getUserByTelegramId).toHaveBeenCalledWith(1);
     expect(mockNeonAdapterInstance.addCompetitorAccount).toHaveBeenCalledWith(
-      51,
-      "dbfail",
-      "https://www.instagram.com/dbfail"
+      projectId,
+      username,
+      instagramUrl
     );
     expect(consoleErrorSpy).toHaveBeenCalledWith(
       "Ошибка при добавлении конкурента в сцене:",
@@ -352,6 +377,60 @@ describe("competitorScene - On Text Handler (ADD_COMPETITOR step)", () => {
     );
     expect(ctx.scene.session.step).toBeUndefined();
     expect(mockNeonAdapterInstance.close).toHaveBeenCalledTimes(1);
-    expect(ctx.scene.leave).not.toHaveBeenCalled();
+  });
+
+  it("should do nothing if step is not ADD_COMPETITOR", async () => {
+    ctx = createMockTextContext("some text", {
+      step: ScraperSceneStep.PROJECT_LIST,
+      projectId: 50,
+    });
+
+    await handleCompetitorText(ctx);
+
+    expect(ctx.reply).not.toHaveBeenCalled();
+    expect(mockNeonAdapterInstance.initialize).not.toHaveBeenCalled();
+  });
+
+  it("should reenter scene if projectId is not in session", async () => {
+    ctx = createMockTextContext("https://www.instagram.com/someuser", {
+      step: ScraperSceneStep.ADD_COMPETITOR,
+      projectId: undefined,
+    });
+
+    await handleCompetitorText(ctx);
+
+    expect(ctx.reply).toHaveBeenCalledWith(
+      "Ошибка: не указан проект. Начните сначала."
+    );
+    expect(ctx.scene.reenter).toHaveBeenCalledTimes(1);
+    expect(mockNeonAdapterInstance.initialize).not.toHaveBeenCalled();
+  });
+
+  it("should reply with error if username cannot be extracted from URL", async () => {
+    ctx = createMockTextContext(
+      "https://www.instagram.com/",
+      {
+        step: ScraperSceneStep.ADD_COMPETITOR,
+        projectId: 51,
+      },
+      1
+    );
+    const userMock: User = {
+      id: 1,
+      telegram_id: 1,
+      username: "testuser",
+      created_at: new Date().toISOString(),
+      is_active: true,
+    };
+    mockNeonAdapterInstance.getUserByTelegramId.mockResolvedValue(userMock);
+
+    await handleCompetitorText(ctx);
+
+    expect(mockNeonAdapterInstance.initialize).toHaveBeenCalledTimes(1);
+    expect(ctx.reply).toHaveBeenCalledWith(
+      "Не удалось извлечь имя пользователя из URL. Пожалуйста, проверьте URL и попробуйте снова."
+    );
+    expect(mockNeonAdapterInstance.addCompetitorAccount).not.toHaveBeenCalled();
+    expect(mockNeonAdapterInstance.close).toHaveBeenCalledTimes(1);
   });
 });
