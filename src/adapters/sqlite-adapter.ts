@@ -9,16 +9,16 @@ import sqlite from "better-sqlite3";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
+import { StorageAdapter } from "../types";
 import {
-  StorageAdapter,
   User,
   Project,
   Competitor,
   Hashtag,
   ReelContent,
   ReelsFilter,
-  ParsingRunLog,
-} from "@/types";
+  ParsingRunLog
+} from "../schemas";
 
 // Настройки для адаптера SQLite
 export interface SqliteAdapterConfig {
@@ -501,6 +501,287 @@ export class SqliteAdapter implements StorageAdapter {
     }
   }
 
+  /**
+   * Получение списка конкурентов для проекта
+   * @param projectId ID проекта
+   */
+  async getCompetitorsByProjectId(projectId: number): Promise<Competitor[]> {
+    return this.getCompetitorAccounts(projectId);
+  }
+
+  /**
+   * Удаление конкурента
+   * @param projectId ID проекта
+   * @param username Имя пользователя конкурента
+   */
+  async deleteCompetitorAccount(projectId: number, username: string): Promise<boolean> {
+    const db = this.ensureConnection();
+
+    try {
+      const query = db.prepare(`
+        UPDATE Competitors
+        SET is_active = 0
+        WHERE username = ? AND project_id = ?
+      `);
+
+      const result = query.run(username, projectId);
+      return result.changes > 0;
+    } catch (error) {
+      console.error("Ошибка при удалении конкурента из SQLite:", error);
+      throw new Error(
+        `Ошибка при удалении конкурента: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
+  /**
+   * Получение списка хэштегов для проекта
+   * @param projectId ID проекта
+   */
+  async getHashtagsByProjectId(projectId: number): Promise<Hashtag[]> {
+    return this.getTrackingHashtags(projectId);
+  }
+
+  /**
+   * Удаление хэштега
+   * @param projectId ID проекта
+   * @param hashtag Хэштег
+   */
+  async removeHashtag(projectId: number, hashtag: string): Promise<void> {
+    const db = this.ensureConnection();
+
+    try {
+      const query = db.prepare(`
+        UPDATE Hashtags
+        SET is_active = 0
+        WHERE project_id = ? AND name = ?
+      `);
+
+      query.run(projectId, hashtag);
+    } catch (error) {
+      console.error("Ошибка при удалении хэштега из SQLite:", error);
+      throw new Error(
+        `Ошибка при удалении хэштега: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
+  /**
+   * Получение списка Reels по ID конкурента
+   * @param competitorId ID конкурента
+   * @param filter Параметры фильтрации
+   */
+  async getReelsByCompetitorId(competitorId: number, filter?: any): Promise<ReelContent[]> {
+    const db = this.ensureConnection();
+
+    try {
+      let query = `
+        SELECT * FROM ReelsContent
+        WHERE source_type = 'competitor' AND source_id = ?
+      `;
+
+      const params: any[] = [String(competitorId)];
+
+      // Применяем фильтры, если они есть
+      if (filter) {
+        if (filter.minViews) {
+          query += " AND views >= ?";
+          params.push(filter.minViews);
+        }
+
+        if (filter.afterDate) {
+          query += " AND published_at >= ?";
+          params.push(filter.afterDate);
+        }
+
+        if (filter.beforeDate) {
+          query += " AND published_at <= ?";
+          params.push(filter.beforeDate);
+        }
+      }
+
+      query += " ORDER BY published_at DESC";
+
+      const statement = db.prepare(query);
+      return statement.all(...params) as ReelContent[];
+    } catch (error) {
+      console.error("Ошибка при получении Reels по ID конкурента из SQLite:", error);
+      return [];
+    }
+  }
+
+  /**
+   * Получение списка Reels по ID проекта
+   * @param projectId ID проекта
+   * @param filter Параметры фильтрации
+   */
+  async getReelsByProjectId(projectId: number, filter?: any): Promise<ReelContent[]> {
+    return this.getReels({ projectId, ...filter });
+  }
+
+  /**
+   * Логирование запуска парсинга
+   * @param log Данные лога
+   */
+  async logParsingRun(log: Partial<ParsingRunLog>): Promise<ParsingRunLog> {
+    const db = this.ensureConnection();
+
+    try {
+      const query = db.prepare(`
+        INSERT INTO ParsingRunLogs (
+          run_id, project_id, source_type, source_id, status,
+          error_message, started_at, ended_at, reels_found_count,
+          reels_added_count, errors_count
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      const result = query.run(
+        log.run_id,
+        log.project_id,
+        log.source_type,
+        String(log.source_id),
+        log.status,
+        log.error_message || null,
+        log.started_at,
+        log.ended_at || null,
+        log.reels_found_count || 0,
+        log.reels_added_count || 0,
+        log.errors_count || 0
+      );
+
+      if (result.lastInsertRowid) {
+        const logId = Number(result.lastInsertRowid);
+        const getLog = db.prepare(`
+          SELECT * FROM ParsingRunLogs
+          WHERE id = ?
+        `);
+
+        const parsingLog = getLog.get(logId) as ParsingRunLog;
+
+        if (parsingLog) {
+          return parsingLog;
+        }
+      }
+
+      throw new Error("Не удалось создать лог запуска парсинга");
+    } catch (error) {
+      console.error("Ошибка при создании лога запуска парсинга в SQLite:", error);
+      throw new Error(
+        `Ошибка при создании лога запуска парсинга: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
+  /**
+   * Алиас для logParsingRun (используется в тестах)
+   * @param log Данные лога
+   */
+  async createParsingLog(log: Partial<ParsingRunLog>): Promise<ParsingRunLog> {
+    return this.logParsingRun(log);
+  }
+
+  /**
+   * Обновление лога запуска парсинга (используется в тестах)
+   * @param log Данные лога
+   */
+  async updateParsingLog(log: Partial<ParsingRunLog>): Promise<ParsingRunLog> {
+    const db = this.ensureConnection();
+
+    try {
+      if (!log.id || !log.run_id) {
+        throw new Error("ID и run_id обязательны для обновления лога парсинга");
+      }
+
+      const query = db.prepare(`
+        UPDATE ParsingRunLogs
+        SET status = ?,
+            ended_at = ?,
+            reels_found_count = ?,
+            reels_added_count = ?,
+            errors_count = ?,
+            error_message = ?
+        WHERE id = ?
+      `);
+
+      query.run(
+        log.status || "completed",
+        log.ended_at || new Date().toISOString(),
+        log.reels_found_count || 0,
+        log.reels_added_count || 0,
+        log.errors_count || 0,
+        log.error_message || null,
+        log.id
+      );
+
+      const getLog = db.prepare(`
+        SELECT * FROM ParsingRunLogs
+        WHERE id = ?
+      `);
+
+      const updatedLog = getLog.get(log.id) as ParsingRunLog;
+
+      if (updatedLog) {
+        return updatedLog;
+      }
+
+      throw new Error("Не удалось обновить лог запуска парсинга");
+    } catch (error) {
+      console.error("Ошибка при обновлении лога запуска парсинга в SQLite:", error);
+      throw new Error(
+        `Ошибка при обновлении лога запуска парсинга: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
+  /**
+   * Получение логов запуска парсинга
+   * @param targetType Тип цели ('competitor' или 'hashtag')
+   * @param targetId ID цели
+   */
+  async getParsingRunLogs(
+    targetType: "competitor" | "hashtag",
+    targetId: string
+  ): Promise<ParsingRunLog[]> {
+    const db = this.ensureConnection();
+
+    try {
+      const query = db.prepare(`
+        SELECT * FROM ParsingRunLogs
+        WHERE source_type = ? AND source_id = ?
+        ORDER BY started_at DESC
+      `);
+
+      return query.all(targetType, targetId) as ParsingRunLog[];
+    } catch (error) {
+      console.error("Ошибка при получении логов запуска парсинга из SQLite:", error);
+      return [];
+    }
+  }
+
+  /**
+   * Получение логов запуска парсинга по ID проекта
+   * @param projectId ID проекта
+   */
+  async getParsingLogsByProjectId(projectId: number): Promise<ParsingRunLog[]> {
+    const db = this.ensureConnection();
+
+    try {
+      const query = db.prepare(`
+        SELECT * FROM ParsingRunLogs
+        WHERE project_id = ?
+        ORDER BY started_at DESC
+      `);
+
+      return query.all(projectId) as ParsingRunLog[];
+    } catch (error) {
+      console.error("Ошибка при получении логов запуска парсинга по ID проекта из SQLite:", error);
+      return [];
+    }
+  }
+
+
+
   // МЕТОДЫ ИЗ ИНТЕРФЕЙСА STORAGEADAPTER
 
   async getUserByTelegramId(telegramId: number): Promise<User | null> {
@@ -555,7 +836,6 @@ export class SqliteAdapter implements StorageAdapter {
     firstName?: string,
     lastName?: string
   ): Promise<User> {
-    const db = this.ensureConnection();
     try {
       let user = await this.getUserByTelegramId(telegramId);
       if (user) {
@@ -575,102 +855,4 @@ export class SqliteAdapter implements StorageAdapter {
     }
   }
 
-  async logParsingRun(log: Partial<ParsingRunLog>): Promise<ParsingRunLog> {
-    const db = this.ensureConnection();
-    const {
-      run_id = `run_${Date.now()}`,
-      project_id,
-      source_type,
-      source_id,
-      status,
-      started_at = new Date().toISOString(), // Убедимся, что есть значение по умолчанию
-      ended_at,
-      reels_found_count = 0,
-      reels_added_count = 0,
-      errors_count = 0,
-      error_message,
-    } = log;
-
-    if (
-      project_id === undefined ||
-      source_type === undefined ||
-      source_id === undefined ||
-      status === undefined
-    ) {
-      // TODO: более строгая валидация или возвращение ошибки
-      console.error(
-        "logParsingRun: Missing required fields (project_id, source_type, source_id, status)",
-        log
-      );
-      // @ts-expect-error - returning partial log as error indicator
-      return { ...log, id: "ERROR_MISSING_FIELDS" };
-    }
-
-    try {
-      const query = db.prepare(`
-        INSERT INTO ParsingRunLogs (
-          run_id, project_id, source_type, source_id, status, started_at,
-          ended_at, reels_found_count, reels_added_count, errors_count, error_message
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(run_id, project_id, source_type, source_id) DO UPDATE SET
-          status = excluded.status,
-          ended_at = excluded.ended_at,
-          reels_found_count = excluded.reels_found_count,
-          reels_added_count = excluded.reels_added_count,
-          errors_count = excluded.errors_count,
-          error_message = excluded.error_message
-      `);
-
-      const result = query.run(
-        run_id,
-        project_id,
-        source_type,
-        String(source_id), // Для SQLite source_id должен быть строкой, если это username
-        status,
-        started_at,
-        ended_at || null,
-        reels_found_count,
-        reels_added_count,
-        errors_count,
-        error_message || null
-      );
-
-      // Попытаемся вернуть полную запись лога, если это новая запись
-      // Для существующей (ON CONFLICT) это будет сложнее без SELECT, но для простоты вернем входные данные + id
-      let loggedRun: ParsingRunLog;
-      if (result.lastInsertRowid) {
-        // Это была новая запись, но lastInsertRowid не является run_id
-        // Мы могли бы сделать SELECT, но пока вернем дополненный log
-        loggedRun = {
-          ...log,
-          id: String(result.lastInsertRowid), // это ID строки, а не run_id
-          run_id,
-          project_id,
-          source_type,
-          source_id: String(source_id),
-          status,
-          started_at,
-          // reels_found_count, reels_added_count, errors_count уже есть в log
-        } as ParsingRunLog; // Приведение типа, так как мы дополнили все поля
-      } else {
-        // Это было обновление, вернем входные данные, т.к. run_id уже есть
-        loggedRun = {
-          ...log,
-          run_id, // Убедимся, что run_id есть
-          project_id,
-          source_type,
-          source_id: String(source_id),
-          status,
-          started_at,
-        } as ParsingRunLog;
-      }
-      return loggedRun;
-    } catch (error) {
-      console.error("Ошибка при логировании запуска парсинга в SQLite:", error);
-      throw new Error(
-        `Ошибка при логировании запуска парсинга: ${error instanceof Error ? error.message : String(error)}`
-      );
-    }
-  }
 }

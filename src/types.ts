@@ -87,6 +87,8 @@ export interface StorageAdapter {
   logParsingRun(log: Partial<ParsingRunLog>): Promise<ParsingRunLog>;
   // Алиас для logParsingRun (используется в тестах)
   createParsingLog?(log: Partial<ParsingRunLog>): Promise<ParsingRunLog>;
+  // Алиас для обновления лога парсинга (используется в тестах)
+  updateParsingLog?(log: Partial<ParsingRunLog>): Promise<ParsingRunLog>;
   getParsingRunLogs(
     targetType: "competitor" | "hashtag",
     targetId: string
