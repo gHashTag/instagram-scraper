@@ -184,6 +184,26 @@ export async function handleManageHashtagsAction(ctx: ScraperBotContext) {
 }
 projectScene.action(/manage_hashtags_(\d+)/, handleManageHashtagsAction);
 
+// Обработчик для запуска скрапинга
+export async function handleScrapeProjectAction(ctx: ScraperBotContext) {
+  console.log("PROJECT_SCENE_DEBUG: handleScrapeProjectAction triggered");
+  const projectId = parseInt((ctx.match as unknown as RegExpExecArray)[1], 10);
+  if (isNaN(projectId)) {
+    logger.warn("[ProjectScene] Invalid project ID for scraping from action match");
+    if (ctx.callbackQuery)
+      await ctx.answerCbQuery("Ошибка: неверный ID проекта.");
+    await ctx.scene.reenter();
+    return;
+  }
+  ctx.scene.session.currentProjectId = projectId;
+  if (ctx.callbackQuery) {
+    await ctx.answerCbQuery();
+  }
+  await ctx.scene.enter("instagram_scraper_scraping", { projectId: projectId });
+  return;
+}
+projectScene.action(/scrape_project_(\d+)/, handleScrapeProjectAction);
+
 // --- Text Handler (Обработчик текстовых сообщений) ---
 export async function handleProjectText(ctx: ScraperBotContext) {
   console.log("PROJECT_SCENE_DEBUG: handleProjectText triggered");

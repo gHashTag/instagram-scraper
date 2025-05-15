@@ -118,6 +118,11 @@ export enum ScraperSceneStep {
   DELETE_COMPETITOR = "DELETE_COMPETITOR", // Добавлен для сцены конкурентов
   HASHTAG_LIST = "HASHTAG_LIST", // Добавлен для сцены хештегов
   ADD_HASHTAG = "ADD_HASHTAG", // Добавлен для сцены хештегов
+  SCRAPING_MENU = "SCRAPING_MENU", // Добавлен для сцены скрапинга
+  SCRAPING_COMPETITORS = "SCRAPING_COMPETITORS", // Добавлен для сцены скрапинга
+  SCRAPING_HASHTAGS = "SCRAPING_HASHTAGS", // Добавлен для сцены скрапинга
+  SCRAPING_PROGRESS = "SCRAPING_PROGRESS", // Добавлен для сцены скрапинга
+  SCRAPING_RESULTS = "SCRAPING_RESULTS", // Добавлен для сцены скрапинга
 }
 
 // Тип ScraperSceneSessionData теперь импортируется из ./schemas

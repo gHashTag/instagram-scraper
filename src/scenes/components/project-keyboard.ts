@@ -50,7 +50,7 @@ export function generateProjectMenuKeyboard(projectId: number) {
     ],
     [
       Markup.button.callback(
-        "▶️ Запустить скрапинг (TODO)",
+        "▶️ Запустить скрапинг",
         `scrape_project_${projectId}`
       ),
     ],

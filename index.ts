@@ -9,6 +9,7 @@ import { Telegraf, Scenes } from "telegraf";
 import { competitorScene } from "./src/scenes/competitor-scene";
 import { projectScene } from "./src/scenes/project-scene";
 import { hashtagScene } from "./src/scenes/hashtag-scene";
+import { scrapingScene } from "./src/scenes/scraping-scene";
 import type { Middleware } from "telegraf";
 import type {
   StorageAdapter,
@@ -72,6 +73,7 @@ export function setupInstagramScraperBot(
     projectScene,
     competitorScene,
     hashtagScene,
+    scrapingScene,
     // Здесь будут добавляться другие сцены
   ]);
 
@@ -93,6 +95,9 @@ export function setupInstagramScraperBot(
   bot.command("competitors", (ctx) =>
     ctx.scene.enter("instagram_scraper_competitors")
   );
+  bot.command("scrape", (ctx) =>
+    ctx.scene.enter("instagram_scraper_scraping")
+  );
 
   // Обработчики текстовых сообщений для меню
   bot.hears("📊 Проекты", (ctx) =>
@@ -101,12 +106,16 @@ export function setupInstagramScraperBot(
   bot.hears("🔍 Конкуренты", (ctx) =>
     ctx.scene.enter("instagram_scraper_competitors")
   );
+  bot.hears("🎬 Запустить скрапинг", (ctx) =>
+    ctx.scene.enter("instagram_scraper_scraping")
+  );
 
   // Возвращаем API модуля
   return {
     // Методы для входа в сцены
     enterProjectScene: () => "instagram_scraper_projects",
     enterCompetitorScene: () => "instagram_scraper_competitors",
+    enterScrapingScene: () => "instagram_scraper_scraping",
 
     // Получение кнопок для меню
     getMenuButtons: () => [

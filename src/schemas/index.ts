@@ -161,7 +161,12 @@ export const ScraperSceneSessionDataSchema = z.object({
     "ADD_COMPETITOR",
     "DELETE_COMPETITOR",
     "HASHTAG_LIST",
-    "ADD_HASHTAG"
+    "ADD_HASHTAG",
+    "SCRAPING_MENU",
+    "SCRAPING_COMPETITORS",
+    "SCRAPING_HASHTAGS",
+    "SCRAPING_PROGRESS",
+    "SCRAPING_RESULTS"
   ]).optional(),
   currentProjectId: z.number().optional(),
   currentCompetitorId: z.number().optional(),
