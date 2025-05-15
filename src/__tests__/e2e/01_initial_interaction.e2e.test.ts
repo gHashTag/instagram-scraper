@@ -25,9 +25,14 @@ import type {
   ScraperBotContext,
   InstagramScraperBotConfig,
   StorageAdapter,
-  User,
 } from "../../types";
 import { NeonAdapter } from "../../adapters/neon-adapter";
+import {
+  User,
+  UserSchema,
+  Project,
+  ProjectSchema
+} from "../../schemas";
 
 // --- Определяем константы и моки здесь, так как нет общего файла mockData ---
 const USER_ID_FOR_TESTING = 123456789;
@@ -38,6 +43,12 @@ const mockUser: User = {
   created_at: new Date().toISOString(),
   is_active: true,
 };
+
+// Валидируем mockUser с помощью Zod
+const validatedUser = UserSchema.parse(mockUser);
+
+// Создаем мок-проекты для тестирования
+const mockProjects: Project[] = [];
 // --- Конец определения констант и моков ---
 
 // Используем mock.module из bun:test
@@ -124,9 +135,9 @@ describe.skip("E2E: Initial Bot Interaction", () => {
     (mockAdapterInstance.close as jest.Mock).mockResolvedValue(undefined);
     (
       mockAdapterInstance.findUserByTelegramIdOrCreate as jest.Mock
-    ).mockResolvedValue(mockUser);
+    ).mockResolvedValue(validatedUser);
     (mockAdapterInstance.getProjectsByUserId as jest.Mock).mockResolvedValue(
-      []
+      mockProjects
     );
 
     // Настраиваем бота с мок-адаптером и конфигурацией
