@@ -1,11 +1,9 @@
-import { describe, it, expect, mock, beforeEach, afterEach } from "bun:test";
-import { jest } from "@jest/globals";
-import { Telegraf, Scenes } from "telegraf";
+import { describe, it, expect, mock, beforeEach } from "bun:test";
+import { jest } from "bun:test";
+import { Telegraf } from "telegraf";
 import { setupInstagramScraperBot } from "../../../index";
-import { ScraperBotContext, StorageAdapter, InstagramScraperBotConfig } from "@/types";
-import { projectScene } from "../../../src/scenes/project-scene";
-import { competitorScene } from "../../../src/scenes/competitor-scene";
-import { hashtagScene } from "../../../src/scenes/hashtag-scene";
+import { ScraperBotContext, InstagramScraperBotConfig, StorageAdapter } from "@/types";
+import { createMockStorageAdapter } from "../helpers/types";
 
 // Мокируем сцены
 mock.module("../../../src/scenes/project-scene", () => ({
@@ -44,32 +42,12 @@ describe("Instagram Scraper Bot Setup", () => {
       catch: jest.fn(),
     } as unknown as Telegraf<ScraperBotContext>;
 
-    storageAdapter = {
-      initialize: jest.fn().mockResolvedValue(undefined),
-      close: jest.fn().mockResolvedValue(undefined),
-      getUserByTelegramId: jest.fn(),
-      findUserByTelegramIdOrCreate: jest.fn(),
-      getProjectsByUserId: jest.fn(),
-      getProjectById: jest.fn(),
-      createProject: jest.fn(),
-      getCompetitorAccounts: jest.fn(),
-      addCompetitorAccount: jest.fn(),
-      deleteCompetitorAccount: jest.fn(),
-      getHashtagsByProjectId: jest.fn(),
-      addHashtag: jest.fn(),
-      removeHashtag: jest.fn(),
-      getReelsByCompetitorId: jest.fn(),
-      saveReels: jest.fn(),
-      getReels: jest.fn(),
-      logParsingRun: jest.fn(),
-      getParsingRunLogs: jest.fn(),
-    };
+    storageAdapter = createMockStorageAdapter();
 
     config = {
-      maxProjectsPerUser: 5,
-      maxCompetitorsPerProject: 10,
-      maxHashtagsPerProject: 20,
-    };
+      telegramBotToken: "test-token",
+      apifyClientToken: "test-apify-token",
+    } as InstagramScraperBotConfig;
 
     // Мокируем Scenes.Stage
     mock.module("telegraf", () => ({
@@ -113,9 +91,13 @@ describe("Instagram Scraper Bot Setup", () => {
     setupInstagramScraperBot(bot, storageAdapter, config);
 
     // Получаем обработчик команды projects
-    const projectsHandler = (bot.command as jest.Mock).mock.calls.find(
+    const projectsHandlerCall = (bot.command as jest.Mock).mock.calls.find(
       call => call[0] === "projects"
-    )[1];
+    );
+
+    // Проверяем, что обработчик был найден
+    expect(projectsHandlerCall).toBeDefined();
+    const projectsHandler = projectsHandlerCall![1];
 
     // Создаем мок-контекст
     const ctx = {
@@ -136,9 +118,13 @@ describe("Instagram Scraper Bot Setup", () => {
     setupInstagramScraperBot(bot, storageAdapter, config);
 
     // Получаем обработчик команды competitors
-    const competitorsHandler = (bot.command as jest.Mock).mock.calls.find(
+    const competitorsHandlerCall = (bot.command as jest.Mock).mock.calls.find(
       call => call[0] === "competitors"
-    )[1];
+    );
+
+    // Проверяем, что обработчик был найден
+    expect(competitorsHandlerCall).toBeDefined();
+    const competitorsHandler = competitorsHandlerCall![1];
 
     // Создаем мок-контекст
     const ctx = {
@@ -168,9 +154,13 @@ describe("Instagram Scraper Bot Setup", () => {
     setupInstagramScraperBot(bot, storageAdapter, config);
 
     // Получаем обработчик текстового сообщения
-    const projectsHandler = (bot.hears as jest.Mock).mock.calls.find(
+    const projectsHandlerCall = (bot.hears as jest.Mock).mock.calls.find(
       call => call[0] === "📊 Проекты"
-    )[1];
+    );
+
+    // Проверяем, что обработчик был найден
+    expect(projectsHandlerCall).toBeDefined();
+    const projectsHandler = projectsHandlerCall![1];
 
     // Создаем мок-контекст
     const ctx = {
@@ -191,9 +181,13 @@ describe("Instagram Scraper Bot Setup", () => {
     setupInstagramScraperBot(bot, storageAdapter, config);
 
     // Получаем обработчик текстового сообщения
-    const competitorsHandler = (bot.hears as jest.Mock).mock.calls.find(
+    const competitorsHandlerCall = (bot.hears as jest.Mock).mock.calls.find(
       call => call[0] === "🔍 Конкуренты"
-    )[1];
+    );
+
+    // Проверяем, что обработчик был найден
+    expect(competitorsHandlerCall).toBeDefined();
+    const competitorsHandler = competitorsHandlerCall![1];
 
     // Создаем мок-контекст
     const ctx = {

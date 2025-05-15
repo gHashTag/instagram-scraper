@@ -4,7 +4,8 @@
  */
 
 import { SceneTester } from "./scene-tester";
-import { User, Project, Competitor, Hashtag, ScraperSceneStep } from "../../../types";
+import { ScraperSceneStep } from "../../../types";
+import { createMockUser, createMockProject, createMockCompetitor } from "../../helpers/mocks";
 import { jest } from "bun:test";
 
 /**
@@ -23,21 +24,17 @@ export function createProjectCreationTestTemplate<T>(
 
     it("should create a project successfully", async () => {
       // Настраиваем моки для успешного сценария
-      const mockUser: User = {
+      const mockUser = createMockUser({
         id: 1,
         telegram_id: 123456789,
-        username: "testuser",
-        created_at: new Date().toISOString(),
-        is_active: true
-      };
+        username: "testuser"
+      });
 
-      const mockProject: Project = {
+      const mockProject = createMockProject({
         id: 1,
         user_id: 1,
-        name: "New Project",
-        created_at: new Date().toISOString(),
-        is_active: true
-      };
+        name: "New Project"
+      });
 
       sceneTester.updateAdapter({
         getUserByTelegramId: jest.fn().mockResolvedValue(mockUser),
@@ -49,7 +46,7 @@ export function createProjectCreationTestTemplate<T>(
         messageText: "New Project",
         sessionData: {
           step: ScraperSceneStep.CREATE_PROJECT,
-          userId: 1,
+          user: mockUser,
         },
       });
 
@@ -65,13 +62,11 @@ export function createProjectCreationTestTemplate<T>(
 
     it("should handle error during project creation", async () => {
       // Настраиваем моки для сценария с ошибкой
-      const mockUser: User = {
+      const mockUser = createMockUser({
         id: 1,
         telegram_id: 123456789,
-        username: "testuser",
-        created_at: new Date().toISOString(),
-        is_active: true
-      };
+        username: "testuser"
+      });
 
       sceneTester.updateAdapter({
         getUserByTelegramId: jest.fn().mockResolvedValue(mockUser),
@@ -83,7 +78,7 @@ export function createProjectCreationTestTemplate<T>(
         messageText: "New Project",
         sessionData: {
           step: ScraperSceneStep.CREATE_PROJECT,
-          userId: 1,
+          user: mockUser,
         },
       });
 
@@ -115,21 +110,18 @@ export function createCompetitorAdditionTestTemplate<T>(
 
     it("should add a competitor successfully", async () => {
       // Настраиваем моки для успешного сценария
-      const mockUser: User = {
+      const mockUser = createMockUser({
         id: 1,
         telegram_id: 123456789,
-        username: "testuser",
-        created_at: new Date().toISOString(),
-        is_active: true
-      };
+        username: "testuser"
+      });
 
-      const mockCompetitor: Competitor = {
+      const mockCompetitor = createMockCompetitor({
         id: 1,
         project_id: 1,
         username: "competitor",
-        created_at: new Date().toISOString(),
-        is_active: true
-      };
+        instagram_url: "https://instagram.com/competitor"
+      });
 
       sceneTester.updateAdapter({
         getUserByTelegramId: jest.fn().mockResolvedValue(mockUser),
@@ -157,13 +149,11 @@ export function createCompetitorAdditionTestTemplate<T>(
 
     it("should handle error during competitor addition", async () => {
       // Настраиваем моки для сценария с ошибкой
-      const mockUser: User = {
+      const mockUser = createMockUser({
         id: 1,
         telegram_id: 123456789,
-        username: "testuser",
-        created_at: new Date().toISOString(),
-        is_active: true
-      };
+        username: "testuser"
+      });
 
       sceneTester.updateAdapter({
         getUserByTelegramId: jest.fn().mockResolvedValue(mockUser),

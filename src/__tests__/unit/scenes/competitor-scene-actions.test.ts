@@ -6,8 +6,10 @@ import {
   handleExitCompetitorSceneAction,
   handleBackToProjectsCompetitorAction
 } from "../../../scenes/competitor-scene";
-import { NeonAdapter } from "../../../adapters/neon-adapter";
+// NeonAdapter импорт не нужен, так как мы используем createMockNeonAdapter
 import { ScraperBotContext, Competitor, ScraperSceneStep } from "@/types";
+import { MockedNeonAdapterType, createMockNeonAdapter } from "../../helpers/types";
+import { createMockCompetitor } from "../../helpers/mocks";
 
 // Мокируем зависимости
 mock.module("../../../logger", () => {
@@ -32,16 +34,22 @@ mock.module("../../../adapters/neon-adapter", () => {
   };
 });
 
-// Создаем тип для мокированного адаптера
-type MockedNeonAdapterType = {
-  initialize: jest.Mock;
-  close: jest.Mock;
-  deleteCompetitorAccount: jest.Mock;
-  getCompetitorAccounts: jest.Mock;
-};
+// Используем импортированный тип MockedNeonAdapterType
 
 describe("competitorScene - Action Handlers", () => {
-  let ctx: ScraperBotContext & { match: RegExpExecArray };
+  // Определяем тип для тестового контекста
+  // Используем Partial<ScraperBotContext> вместо полного типа, чтобы не требовать все свойства
+  type TestContext = Partial<ScraperBotContext> & {
+    match: RegExpExecArray;
+    customSceneEnterMock?: jest.Mock;
+    scene: any;
+    storage: any;
+    reply: jest.Mock;
+    editMessageReplyMarkup: jest.Mock;
+    answerCbQuery: jest.Mock;
+    from: any;
+  };
+  let ctx: TestContext;
   let consoleErrorSpy: jest.SpiedFunction<typeof console.error>;
 
   beforeEach(() => {
@@ -56,7 +64,7 @@ describe("competitorScene - Action Handlers", () => {
         reenter: jest.fn(),
         enter: jest.fn(),
       },
-      storage: new NeonAdapter() as unknown as MockedNeonAdapterType,
+      storage: createMockNeonAdapter(),
       match: ["", "1", "testuser"] as unknown as RegExpExecArray,
       from: {
         id: 123456789,
@@ -65,7 +73,13 @@ describe("competitorScene - Action Handlers", () => {
         last_name: "User",
         is_bot: false,
       },
-    };
+      // Добавляем все необходимые свойства для ScraperBotContext
+      telegram: {} as any,
+      update: {} as any,
+      botInfo: {} as any,
+      config: {} as any,
+      scraperConfig: {} as any,
+    } as TestContext;
 
     consoleErrorSpy = spyOn(console, "error").mockImplementation(() => {});
     jest.clearAllMocks();
@@ -81,7 +95,7 @@ describe("competitorScene - Action Handlers", () => {
       (ctx.storage as MockedNeonAdapterType).deleteCompetitorAccount.mockResolvedValue(true);
 
       // Вызываем обработчик
-      await handleDeleteCompetitorAction(ctx);
+      await handleDeleteCompetitorAction(ctx as any);
 
       // Проверяем, что был вызван метод initialize
       expect((ctx.storage as MockedNeonAdapterType).initialize).toHaveBeenCalled();
@@ -109,7 +123,7 @@ describe("competitorScene - Action Handlers", () => {
       (ctx.storage as MockedNeonAdapterType).deleteCompetitorAccount.mockResolvedValue(false);
 
       // Вызываем обработчик
-      await handleDeleteCompetitorAction(ctx);
+      await handleDeleteCompetitorAction(ctx as any);
 
       // Проверяем, что был вызван метод initialize
       expect((ctx.storage as MockedNeonAdapterType).initialize).toHaveBeenCalled();
@@ -134,7 +148,7 @@ describe("competitorScene - Action Handlers", () => {
       (ctx.storage as MockedNeonAdapterType).deleteCompetitorAccount.mockRejectedValue(new Error("Database error"));
 
       // Вызываем обработчик
-      await handleDeleteCompetitorAction(ctx);
+      await handleDeleteCompetitorAction(ctx as any);
 
       // Проверяем, что был вызван метод initialize
       expect((ctx.storage as MockedNeonAdapterType).initialize).toHaveBeenCalled();
@@ -165,7 +179,7 @@ describe("competitorScene - Action Handlers", () => {
       ctx.match = ["", "invalid", ""] as unknown as RegExpExecArray;
 
       // Вызываем обработчик
-      await handleDeleteCompetitorAction(ctx);
+      await handleDeleteCompetitorAction(ctx as any);
 
       // Проверяем, что был вызван console.error
       expect(consoleErrorSpy).toHaveBeenCalledWith(
@@ -194,13 +208,13 @@ describe("competitorScene - Action Handlers", () => {
     it("should show competitors list when project has competitors", async () => {
       // Мокируем результат запроса getCompetitorAccounts
       const mockCompetitors: Competitor[] = [
-        { id: 1, project_id: 1, username: "competitor1", instagram_url: "https://instagram.com/competitor1", is_active: true },
-        { id: 2, project_id: 1, username: "competitor2", instagram_url: "https://instagram.com/competitor2", is_active: true }
+        createMockCompetitor({ id: 1, project_id: 1, username: "competitor1", instagram_url: "https://instagram.com/competitor1" }),
+        createMockCompetitor({ id: 2, project_id: 1, username: "competitor2", instagram_url: "https://instagram.com/competitor2" })
       ];
       (ctx.storage as MockedNeonAdapterType).getCompetitorAccounts.mockResolvedValue(mockCompetitors);
 
       // Вызываем обработчик
-      await handleCompetitorsProjectAction(ctx);
+      await handleCompetitorsProjectAction(ctx as any);
 
       // Проверяем, что был вызван метод initialize
       expect((ctx.storage as MockedNeonAdapterType).initialize).toHaveBeenCalled();
@@ -226,7 +240,7 @@ describe("competitorScene - Action Handlers", () => {
       (ctx.storage as MockedNeonAdapterType).getCompetitorAccounts.mockResolvedValue([]);
 
       // Вызываем обработчик
-      await handleCompetitorsProjectAction(ctx);
+      await handleCompetitorsProjectAction(ctx as any);
 
       // Проверяем, что был вызван метод initialize
       expect((ctx.storage as MockedNeonAdapterType).initialize).toHaveBeenCalled();
@@ -252,7 +266,7 @@ describe("competitorScene - Action Handlers", () => {
       (ctx.storage as MockedNeonAdapterType).getCompetitorAccounts.mockRejectedValue(new Error("Database error"));
 
       // Вызываем обработчик
-      await handleCompetitorsProjectAction(ctx);
+      await handleCompetitorsProjectAction(ctx as any);
 
       // Проверяем, что был вызван метод initialize
       expect((ctx.storage as MockedNeonAdapterType).initialize).toHaveBeenCalled();
@@ -284,7 +298,7 @@ describe("competitorScene - Action Handlers", () => {
 
     it("should set session data and prompt for competitor URL", async () => {
       // Вызываем обработчик
-      await handleAddCompetitorAction(ctx);
+      await handleAddCompetitorAction(ctx as any);
 
       // Проверяем, что был установлен projectId в сессии
       expect(ctx.scene.session.projectId).toBe(1);
@@ -306,7 +320,7 @@ describe("competitorScene - Action Handlers", () => {
       ctx.match = ["add_competitor_invalid", "invalid"] as unknown as RegExpExecArray;
 
       // Вызываем обработчик
-      await handleAddCompetitorAction(ctx);
+      await handleAddCompetitorAction(ctx as any);
 
       // Проверяем, что был вызван console.error
       expect(consoleErrorSpy).toHaveBeenCalledWith(
@@ -329,7 +343,7 @@ describe("competitorScene - Action Handlers", () => {
   describe("handleExitCompetitorSceneAction", () => {
     it("should leave scene and show message", async () => {
       // Вызываем обработчик
-      await handleExitCompetitorSceneAction(ctx);
+      await handleExitCompetitorSceneAction(ctx as any);
 
       // Проверяем, что был вызван метод reply с сообщением
       expect(ctx.reply).toHaveBeenCalledWith(
@@ -349,7 +363,7 @@ describe("competitorScene - Action Handlers", () => {
       ctx.scene.session.currentProjectId = 1;
 
       // Вызываем обработчик
-      await handleExitCompetitorSceneAction(ctx);
+      await handleExitCompetitorSceneAction(ctx as any);
 
       // Проверяем, что был вызван метод reply с сообщением
       expect(ctx.reply).toHaveBeenCalledWith(
@@ -374,7 +388,7 @@ describe("competitorScene - Action Handlers", () => {
   describe("handleBackToProjectsCompetitorAction", () => {
     it("should enter projects scene", async () => {
       // Вызываем обработчик
-      await handleBackToProjectsCompetitorAction(ctx);
+      await handleBackToProjectsCompetitorAction(ctx as any);
 
       // Проверяем, что был вызван метод answerCbQuery
       expect(ctx.answerCbQuery).toHaveBeenCalled();
@@ -389,7 +403,7 @@ describe("competitorScene - Action Handlers", () => {
       ctx.customSceneEnterMock = customSceneEnterMock;
 
       // Вызываем обработчик
-      await handleBackToProjectsCompetitorAction(ctx);
+      await handleBackToProjectsCompetitorAction(ctx as any);
 
       // Проверяем, что был вызван метод answerCbQuery
       expect(ctx.answerCbQuery).toHaveBeenCalled();

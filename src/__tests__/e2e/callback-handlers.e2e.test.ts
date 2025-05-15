@@ -12,8 +12,9 @@ import type {
   ScraperBotContext,
   InstagramScraperBotConfig,
   StorageAdapter,
-  Project,
 } from "../../types";
+import { createMockStorageAdapter } from "../helpers/types";
+import { createMockUser, createMockProject } from "../helpers/mocks";
 
 describe.skip("E2E: Callback Handlers", () => {
   let bot: Telegraf<ScraperBotContext>;
@@ -27,13 +28,11 @@ describe.skip("E2E: Callback Handlers", () => {
     apifyClientToken: "test-apify-token",
   };
 
-  const mockProject: Project = {
+  const mockProject = createMockProject({
     id: 1,
     user_id: 1,
-    name: "Test Project",
-    created_at: new Date().toISOString(),
-    is_active: true,
-  };
+    name: "Test Project"
+  });
 
   beforeEach(() => {
     // Создаем моки для методов бота
@@ -58,32 +57,20 @@ describe.skip("E2E: Callback Handlers", () => {
     mockAnswerCbQuery = jest.fn().mockResolvedValue(true);
 
     // Создаем мок для хранилища
-    mockStorage = {
-      initialize: jest.fn(),
-      close: jest.fn(),
-      findUserByTelegramIdOrCreate: jest.fn().mockResolvedValue({
-        id: 1,
-        telegram_id: 123456789,
-        username: "testuser",
-        created_at: new Date().toISOString(),
-        is_active: true,
-      }),
-      getUserByTelegramId: jest.fn(),
-      getProjectsByUserId: jest.fn(),
-      getProjectById: jest.fn().mockResolvedValue(mockProject),
-      createProject: jest.fn(),
-      getHashtagsByProjectId: jest.fn().mockResolvedValue([]),
-      addHashtag: jest.fn(),
-      removeHashtag: jest.fn(),
-      getCompetitorAccounts: jest.fn().mockResolvedValue([]),
-      addCompetitorAccount: jest.fn(),
-      deleteCompetitorAccount: jest.fn(),
-      getReelsByProjectId: jest.fn(),
-      saveReels: jest.fn(),
-      getParsingLogsByProjectId: jest.fn(),
-      createParsingLog: jest.fn(),
-      updateParsingLog: jest.fn(),
-    };
+    mockStorage = createMockStorageAdapter();
+
+    // Настраиваем специфические моки
+    const mockUser = createMockUser({
+      id: 1,
+      telegram_id: 123456789,
+      username: "testuser"
+    });
+
+    // Настраиваем моки с возвращаемыми значениями
+    (mockStorage.findUserByTelegramIdOrCreate as jest.Mock).mockImplementation(() => Promise.resolve(mockUser));
+    (mockStorage.getProjectById as jest.Mock).mockImplementation(() => Promise.resolve(mockProject));
+    (mockStorage.getHashtagsByProjectId as jest.Mock).mockImplementation(() => Promise.resolve([]));
+    (mockStorage.getCompetitorAccounts as jest.Mock).mockImplementation(() => Promise.resolve([]));
 
     // Создаем бот с мидлварой для мокирования методов
     bot = new Telegraf<ScraperBotContext>("test-bot-token");

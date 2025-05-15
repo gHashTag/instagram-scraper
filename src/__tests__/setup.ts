@@ -72,7 +72,7 @@ beforeEach(() => {
 
 // Очистка после каждого теста
 afterEach(() => {
-  jest.resetAllMocks();
+  jest.restoreAllMocks();
 });
 
 // Устанавливаем глобальную переменную для Neon

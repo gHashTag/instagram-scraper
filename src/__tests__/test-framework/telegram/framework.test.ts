@@ -1,21 +1,21 @@
 import { describe, it, expect, jest, beforeEach } from "bun:test";
-import { createMockContext, createMockAdapter, resetAllMocks } from "./mocks";
+import { createMockContext, createMockAdapter } from "./mocks";
 import { SceneTester } from "./scene-tester";
 import { ScraperSceneStep } from "../../../types";
 
 // Мокируем класс сцены
 class MockScene {
-  constructor(private adapter: any) {}
+  constructor(_adapter: any) {}
 
-  enterHandler(ctx: any) {
+  enterHandler(_ctx: any) {
     return Promise.resolve();
   }
 
-  handleAction(ctx: any) {
+  handleAction(_ctx: any) {
     return Promise.resolve();
   }
 
-  handleText(ctx: any) {
+  handleText(_ctx: any) {
     return Promise.resolve();
   }
 }
@@ -24,13 +24,13 @@ describe("Telegram Test Framework", () => {
   describe("createMockContext", () => {
     it("should create a mock context with default values", () => {
       const ctx = createMockContext();
-      
+
       expect(ctx.scene).toBeDefined();
       expect(ctx.scene.enter).toBeDefined();
       expect(ctx.scene.leave).toBeDefined();
       expect(ctx.scene.reenter).toBeDefined();
       expect(ctx.scene.session).toBeDefined();
-      
+
       expect(ctx.reply).toBeDefined();
       expect(ctx.from).toBeDefined();
       expect(ctx.from?.id).toBe(123456789);
@@ -49,7 +49,7 @@ describe("Telegram Test Framework", () => {
           projectId: 42
         }
       });
-      
+
       expect(ctx.from?.id).toBe(987654321);
       expect(ctx.from?.username).toBe("customuser");
       expect(ctx.from?.first_name).toBe("Custom");
@@ -63,7 +63,7 @@ describe("Telegram Test Framework", () => {
       const ctx = createMockContext({
         callbackQueryData: "action_123"
       });
-      
+
       expect(ctx.callbackQuery).toBeDefined();
       expect(ctx.callbackQuery?.data).toBe("action_123");
     });
@@ -72,7 +72,7 @@ describe("Telegram Test Framework", () => {
       const ctx = createMockContext({
         matchData: ["full_match", "group1", "group2"]
       });
-      
+
       expect(ctx.match).toBeDefined();
       expect(ctx.match?.[0]).toBe("full_match");
       expect(ctx.match?.[1]).toBe("group1");
@@ -83,7 +83,7 @@ describe("Telegram Test Framework", () => {
   describe("createMockAdapter", () => {
     it("should create a mock adapter with all methods", () => {
       const adapter = createMockAdapter();
-      
+
       expect(adapter.initialize).toBeDefined();
       expect(adapter.close).toBeDefined();
       expect(adapter.getUserByTelegramId).toBeDefined();
@@ -96,18 +96,18 @@ describe("Telegram Test Framework", () => {
 
     it("should override methods with provided mocks", () => {
       const customGetUserMock = jest.fn().mockResolvedValue({ id: 42, telegram_id: 123, username: "test" });
-      
+
       const adapter = createMockAdapter({
         getUserByTelegramId: customGetUserMock
       });
-      
+
       expect(adapter.getUserByTelegramId).toBe(customGetUserMock);
     });
   });
 
   describe("SceneTester", () => {
     let sceneTester: SceneTester<MockScene>;
-    
+
     beforeEach(() => {
       sceneTester = new SceneTester<MockScene>({
         sceneName: "MockScene",
@@ -115,40 +115,42 @@ describe("Telegram Test Framework", () => {
         sceneConstructor: MockScene
       });
     });
-    
+
     it("should create a scene tester with mock context and adapter", () => {
       expect(sceneTester.getScene()).toBeInstanceOf(MockScene);
       expect(sceneTester.getContext()).toBeDefined();
       expect(sceneTester.getAdapter()).toBeDefined();
     });
-    
+
     it("should update context with new options", () => {
       sceneTester.updateContext({
         userId: 42,
         messageText: "Updated message"
       });
-      
+
       expect(sceneTester.getContext().from?.id).toBe(42);
       expect(sceneTester.getContext().message?.text).toBe("Updated message");
     });
-    
+
     it("should update adapter with new mocks", () => {
       const customMock = jest.fn().mockResolvedValue([{ id: 1, name: "Test Project" }]);
-      
+
       sceneTester.updateAdapter({
         getProjectsByUserId: customMock
       });
-      
+
       expect(sceneTester.getAdapter().getProjectsByUserId).toBe(customMock);
     });
-    
+
     it("should call scene methods", async () => {
       // Создаем шпион для метода сцены
-      const spy = jest.spyOn(sceneTester.getScene() as any, "enterHandler");
-      
+      const scene = sceneTester.getScene() as any;
+      const originalMethod = scene.enterHandler;
+      scene.enterHandler = jest.fn(originalMethod);
+
       await sceneTester.callSceneMethod("enterHandler", sceneTester.getContext());
-      
-      expect(spy).toHaveBeenCalledWith(sceneTester.getContext());
+
+      expect(scene.enterHandler).toHaveBeenCalledWith(sceneTester.getContext());
     });
   });
 });

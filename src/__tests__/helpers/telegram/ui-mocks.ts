@@ -3,7 +3,7 @@
  * @description Содержит функции для создания моков инлайн-клавиатур и других UI-элементов
  */
 
-import { Project, Competitor, Hashtag } from "../../../types";
+// Импорты типов не требуются, так как мы используем только базовые типы
 
 /**
  * Создает мок инлайн-клавиатуры
@@ -41,10 +41,10 @@ export function createProjectListKeyboardMock(
     text: project.name,
     callback_data: `project_${project.id}`
   }]);
-  
+
   buttons.push([{ text: "➕ Создать новый проект", callback_data: "create_project" }]);
   buttons.push([{ text: "◀️ Назад", callback_data: "back" }]);
-  
+
   return createInlineKeyboardMock(buttons);
 }
 
@@ -61,7 +61,7 @@ export function createProjectMenuKeyboardMock(projectId: number): any {
     [{ text: "📊 Результаты парсинга", callback_data: `parsing_results_${projectId}` }],
     [{ text: "◀️ Назад", callback_data: "back" }]
   ];
-  
+
   return createInlineKeyboardMock(buttons);
 }
 
@@ -79,10 +79,10 @@ export function createCompetitorListKeyboardMock(
     text: `@${competitor.username}`,
     callback_data: `competitor_${competitor.id}`
   }]);
-  
+
   buttons.push([{ text: "➕ Добавить конкурента", callback_data: `add_competitor_${projectId}` }]);
   buttons.push([{ text: "◀️ Назад", callback_data: `project_${projectId}` }]);
-  
+
   return createInlineKeyboardMock(buttons);
 }
 
@@ -100,10 +100,10 @@ export function createHashtagListKeyboardMock(
     text: `#${hashtag.name}`,
     callback_data: `hashtag_${hashtag.id}`
   }]);
-  
+
   buttons.push([{ text: "➕ Добавить хештег", callback_data: `add_hashtag_${projectId}` }]);
   buttons.push([{ text: "◀️ Назад", callback_data: `project_${projectId}` }]);
-  
+
   return createInlineKeyboardMock(buttons);
 }
 
@@ -121,8 +121,8 @@ export function createParsingResultsKeyboardMock(
     text: `Запуск #${id}`,
     callback_data: `parsing_run_${id}`
   }]);
-  
+
   buttons.push([{ text: "◀️ Назад", callback_data: `project_${projectId}` }]);
-  
+
   return createInlineKeyboardMock(buttons);
 }

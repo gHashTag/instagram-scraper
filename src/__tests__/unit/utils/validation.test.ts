@@ -1,6 +1,5 @@
-import { describe, it, expect, mock, beforeAll, afterAll } from "bun:test";
+import { describe, it, expect, beforeAll, afterAll } from "bun:test";
 import {
-  isValidProjectName,
   isValidInstagramUrl,
   extractUsernameFromUrl,
   isValidHashtag,

@@ -1,6 +1,6 @@
 import { describe, it, expect, jest, mock, beforeEach, afterEach } from "bun:test";
 import { handleHashtagEnter } from "../../../scenes/hashtag-scene";
-import { ScraperSceneStep } from "../../../types";
+// Импорт ScraperSceneStep не используется
 
 // Мокируем NeonAdapter
 mock.module("../../../adapters/neon-adapter", () => {
@@ -35,7 +35,7 @@ describe("hashtagScene - Enter Handler", () => {
         close: jest.fn().mockResolvedValue(undefined),
       },
     };
-    
+
     mockAdapter = ctx.storage;
   });
 
@@ -46,18 +46,18 @@ describe("hashtagScene - Enter Handler", () => {
   it("should leave scene if projectId is not defined", async () => {
     // Устанавливаем projectId в undefined
     ctx.scene.session.projectId = undefined;
-    
+
     // Вызываем обработчик
     await handleHashtagEnter(ctx);
-    
+
     // Проверяем, что был вызван метод reply с сообщением об ошибке
     expect(ctx.reply).toHaveBeenCalledWith(
       "Ошибка: проект не определен. Пожалуйста, вернитесь и выберите проект."
     );
-    
+
     // Проверяем, что был вызван метод leave
     expect(ctx.scene.leave).toHaveBeenCalled();
-    
+
     // Проверяем, что не было вызовов к адаптеру
     expect(mockAdapter.initialize).not.toHaveBeenCalled();
   });
@@ -66,16 +66,16 @@ describe("hashtagScene - Enter Handler", () => {
     // Мокируем результаты запросов
     mockAdapter.getHashtagsByProjectId.mockResolvedValue([]);
     mockAdapter.getProjectById.mockResolvedValue({ name: "Test Project" });
-    
+
     // Вызываем обработчик
     await handleHashtagEnter(ctx);
-    
+
     // Проверяем, что был вызван метод reply с сообщением о пустом списке хештегов
     expect(ctx.reply).toHaveBeenCalledWith(
       'В проекте "Test Project" нет отслеживаемых хештегов. Хотите добавить первый?',
       expect.anything()
     );
-    
+
     // Проверяем, что были вызваны методы адаптера
     expect(mockAdapter.initialize).toHaveBeenCalled();
     expect(mockAdapter.getHashtagsByProjectId).toHaveBeenCalledWith(1);
@@ -91,16 +91,16 @@ describe("hashtagScene - Enter Handler", () => {
     ];
     mockAdapter.getHashtagsByProjectId.mockResolvedValue(mockHashtags);
     mockAdapter.getProjectById.mockResolvedValue({ name: "Test Project" });
-    
+
     // Вызываем обработчик
     await handleHashtagEnter(ctx);
-    
+
     // Проверяем, что был вызван метод reply с сообщением со списком хештегов
     expect(ctx.reply).toHaveBeenCalledWith(
       'Хештеги в проекте "Test Project":\n\n1. #test1\n2. #test2\n\nЧто вы хотите сделать дальше?',
       expect.anything()
     );
-    
+
     // Проверяем, что были вызваны методы адаптера
     expect(mockAdapter.initialize).toHaveBeenCalled();
     expect(mockAdapter.getHashtagsByProjectId).toHaveBeenCalledWith(1);
@@ -111,15 +111,15 @@ describe("hashtagScene - Enter Handler", () => {
   it("should handle error when getHashtagsByProjectId fails", async () => {
     // Мокируем ошибку в запросе
     mockAdapter.getHashtagsByProjectId.mockRejectedValue(new Error("Database error"));
-    
+
     // Вызываем обработчик
     await handleHashtagEnter(ctx);
-    
+
     // Проверяем, что был вызван метод reply с сообщением об ошибке
     expect(ctx.reply).toHaveBeenCalledWith(
       "Не удалось загрузить список хештегов. Попробуйте позже."
     );
-    
+
     // Проверяем, что были вызваны методы адаптера
     expect(mockAdapter.initialize).toHaveBeenCalled();
     expect(mockAdapter.getHashtagsByProjectId).toHaveBeenCalledWith(1);
@@ -130,16 +130,16 @@ describe("hashtagScene - Enter Handler", () => {
     // Мокируем результаты запросов
     mockAdapter.getHashtagsByProjectId.mockResolvedValue([]);
     mockAdapter.getProjectById.mockResolvedValue(null);
-    
+
     // Вызываем обработчик
     await handleHashtagEnter(ctx);
-    
+
     // Проверяем, что был вызван метод reply с сообщением, использующим ID проекта
     expect(ctx.reply).toHaveBeenCalledWith(
       'В проекте "Проект ID 1" нет отслеживаемых хештегов. Хотите добавить первый?',
       expect.anything()
     );
-    
+
     // Проверяем, что были вызваны методы адаптера
     expect(mockAdapter.initialize).toHaveBeenCalled();
     expect(mockAdapter.getHashtagsByProjectId).toHaveBeenCalledWith(1);

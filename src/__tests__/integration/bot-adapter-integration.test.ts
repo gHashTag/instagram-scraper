@@ -1,72 +1,70 @@
-import { describe, it, expect, beforeEach, afterEach } from "bun:test";
+import { describe, it, expect, beforeEach } from "bun:test";
 import { jest } from "@jest/globals";
 import { Telegraf } from "telegraf";
 import { setupInstagramScraperBot } from "../../../index";
 import { ScraperBotContext, StorageAdapter, InstagramScraperBotConfig } from "@/types";
-import { User, Project, Competitor, Hashtag } from "@/types";
+import { createMockUser, createMockProject } from "../helpers/mocks";
+import { createMockStorageAdapter } from "../helpers/types";
 
 describe("Bot and Adapter Integration Tests", () => {
   let bot: Telegraf<ScraperBotContext>;
   let storageAdapter: StorageAdapter;
   let config: InstagramScraperBotConfig;
-  let botApi: any;
+  // botApi не используется
 
   // Тестовые данные
-  const testUser: User = {
+  const testUser = createMockUser({
     id: 1,
     telegram_id: 123456789,
-    username: "testuser",
-    created_at: new Date().toISOString(),
-  };
+    username: "testuser"
+  });
 
-  const testProjects: Project[] = [
-    {
+  const testProjects = [
+    createMockProject({
       id: 1,
       user_id: 1,
-      name: "Test Project 1",
-      created_at: new Date().toISOString(),
-    },
-    {
+      name: "Test Project 1"
+    }),
+    createMockProject({
       id: 2,
       user_id: 1,
-      name: "Test Project 2",
-      created_at: new Date().toISOString(),
-    },
+      name: "Test Project 2"
+    })
   ];
 
-  const testCompetitors: Competitor[] = [
-    {
+  // Тестовые конкуренты (закомментировано, так как не используется)
+  /*
+  const testCompetitors = [
+    createMockCompetitor({
       id: 1,
       project_id: 1,
       username: "competitor1",
-      instagram_url: "https://instagram.com/competitor1",
-      is_active: true,
-      created_at: new Date().toISOString(),
-    },
-    {
+      instagram_url: "https://instagram.com/competitor1"
+    }),
+    createMockCompetitor({
       id: 2,
       project_id: 1,
       username: "competitor2",
-      instagram_url: "https://instagram.com/competitor2",
-      is_active: true,
-      created_at: new Date().toISOString(),
-    },
+      instagram_url: "https://instagram.com/competitor2"
+    })
   ];
+  */
 
-  const testHashtags: Hashtag[] = [
-    {
+  // Тестовые хештеги (закомментировано, так как не используется)
+  /*
+  const testHashtags = [
+    createMockHashtag({
       id: 1,
       project_id: 1,
-      hashtag: "test1",
-      created_at: new Date().toISOString(),
-    },
-    {
+      hashtag: "test1"
+    }),
+    createMockHashtag({
       id: 2,
       project_id: 1,
-      hashtag: "test2",
-      created_at: new Date().toISOString(),
-    },
+      hashtag: "test2"
+    })
   ];
+  */
 
   beforeEach(() => {
     // Создаем мок-объекты для тестов
@@ -79,35 +77,15 @@ describe("Bot and Adapter Integration Tests", () => {
     } as unknown as Telegraf<ScraperBotContext>;
 
     // Создаем мок StorageAdapter
-    storageAdapter = {
-      initialize: jest.fn().mockResolvedValue(undefined),
-      close: jest.fn().mockResolvedValue(undefined),
-      getUserByTelegramId: jest.fn(),
-      findUserByTelegramIdOrCreate: jest.fn(),
-      getProjectsByUserId: jest.fn(),
-      getProjectById: jest.fn(),
-      createProject: jest.fn(),
-      getCompetitorAccounts: jest.fn(),
-      addCompetitorAccount: jest.fn(),
-      deleteCompetitorAccount: jest.fn(),
-      getHashtagsByProjectId: jest.fn(),
-      addHashtag: jest.fn(),
-      removeHashtag: jest.fn(),
-      getReelsByCompetitorId: jest.fn(),
-      saveReels: jest.fn(),
-      getReels: jest.fn(),
-      logParsingRun: jest.fn(),
-      getParsingRunLogs: jest.fn(),
-    } as unknown as StorageAdapter;
+    storageAdapter = createMockStorageAdapter();
 
     config = {
-      maxProjectsPerUser: 5,
-      maxCompetitorsPerProject: 10,
-      maxHashtagsPerProject: 20,
-    };
+      telegramBotToken: "test-token",
+      apifyClientToken: "test-apify-token",
+    } as InstagramScraperBotConfig;
 
     // Инициализируем бота
-    botApi = setupInstagramScraperBot(bot, storageAdapter, config);
+    setupInstagramScraperBot(bot, storageAdapter, config);
   });
 
   it("should initialize adapter when entering project scene", async () => {
@@ -129,7 +107,7 @@ describe("Bot and Adapter Integration Tests", () => {
         reenter: jest.fn(),
         session: {},
       },
-      reply: jest.fn().mockResolvedValue(true),
+      reply: jest.fn().mockImplementation(() => Promise.resolve()),
       storage: storageAdapter,
       scraperConfig: config,
     } as unknown as ScraperBotContext;
@@ -178,7 +156,7 @@ describe("Bot and Adapter Integration Tests", () => {
         reenter: jest.fn(),
         session: { step: "CREATE_PROJECT" },
       },
-      reply: jest.fn().mockResolvedValue(true),
+      reply: jest.fn().mockImplementation(() => Promise.resolve()),
       storage: storageAdapter,
       scraperConfig: config,
     } as unknown as ScraperBotContext;
@@ -230,7 +208,7 @@ describe("Bot and Adapter Integration Tests", () => {
           projectId: 1
         },
       },
-      reply: jest.fn().mockResolvedValue(true),
+      reply: jest.fn().mockImplementation(() => Promise.resolve()),
       storage: storageAdapter,
       scraperConfig: config,
     } as unknown as ScraperBotContext;
@@ -246,7 +224,12 @@ describe("Bot and Adapter Integration Tests", () => {
     jest.clearAllMocks();
 
     // Вызываем обработчик текстовых сообщений напрямую
-    await handleCompetitorText(ctx);
+    // Создаем новый контекст с необходимыми свойствами
+    const competitorCtx = {
+      ...ctx,
+      message: { text: "test-competitor" }
+    };
+    await handleCompetitorText(competitorCtx as any);
 
     // Проверяем, что адаптер был инициализирован
     expect(storageAdapter.initialize).toHaveBeenCalled();
@@ -287,7 +270,7 @@ describe("Bot and Adapter Integration Tests", () => {
           projectId: 1
         },
       },
-      reply: jest.fn().mockResolvedValue(true),
+      reply: jest.fn().mockImplementation(() => Promise.resolve()),
       storage: storageAdapter,
       scraperConfig: config,
     } as unknown as ScraperBotContext;
@@ -296,7 +279,12 @@ describe("Bot and Adapter Integration Tests", () => {
     const { handleHashtagTextInput } = await import("../../../src/scenes/hashtag-scene");
 
     // Вызываем обработчик текстовых сообщений напрямую
-    await handleHashtagTextInput(ctx);
+    // Создаем новый контекст с необходимыми свойствами
+    const hashtagCtx = {
+      ...ctx,
+      message: { text: "test-hashtag" }
+    };
+    await handleHashtagTextInput(hashtagCtx as any);
 
     // Проверяем, что адаптер был инициализирован
     expect(storageAdapter.initialize).toHaveBeenCalled();

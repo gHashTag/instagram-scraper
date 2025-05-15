@@ -37,11 +37,11 @@ export function expectInlineKeyboardWithButtons(ctx: MockedTelegramContext, butt
     if (call[1] && call[1].reply_markup && call[1].reply_markup.inline_keyboard) {
       const keyboard = call[1].reply_markup.inline_keyboard;
       const flatButtons = keyboard.flat().map((btn: any) => btn.text);
-      
-      const allButtonsPresent = buttonTexts.every(text => 
-        flatButtons.some(btnText => btnText.includes(text))
+
+      const allButtonsPresent = buttonTexts.every(text =>
+        flatButtons.some((btnText: string) => btnText.includes(text))
       );
-      
+
       if (allButtonsPresent) {
         found = true;
         break;
@@ -76,8 +76,8 @@ export function expectSceneExit(ctx: MockedTelegramContext): void {
  * @param args Аргументы, с которыми должен был быть вызван метод
  */
 export function expectAdapterMethodCalled(
-  ctx: MockedTelegramContext, 
-  methodName: string, 
+  ctx: MockedTelegramContext,
+  methodName: string,
   ...args: any[]
 ): void {
   expect(ctx.storage[methodName]).toHaveBeenCalledWith(...args);

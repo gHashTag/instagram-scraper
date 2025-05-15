@@ -3,29 +3,31 @@
  * @description Демонстрирует, как использовать фреймворк для тестирования Telegram-сцен
  */
 
-import { describe, it, expect, beforeEach } from "bun:test";
-import { 
-  SceneTester, 
-  SceneSequenceTester, 
-  expectSceneStep, 
-  expectMessageContaining, 
+import { describe, it, expect, beforeEach, jest } from "bun:test";
+import {
+  SceneTester,
+  SceneSequenceTester,
+  expectSceneStep,
+  expectMessageContaining,
   expectInlineKeyboardWithButtons,
   createProjectCreationTestTemplate
 } from "../helpers/telegram";
-import { ProjectScene } from "../../scenes/project-scene";
+// Импортируем сцену проекта
+import { projectScene } from "../../scenes/project-scene";
 import { ScraperSceneStep } from "../../types";
 
 describe("ProjectScene - Пример использования фреймворка", () => {
-  let sceneTester: SceneTester<ProjectScene>;
+  // Используем тип Scenes.BaseScene вместо ProjectScene
+  let sceneTester: SceneTester<typeof projectScene>;
 
   beforeEach(() => {
     // Создаем тестер сцены
     sceneTester = new SceneTester({
       sceneName: "ProjectScene",
       sceneFilePath: "../../scenes/project-scene",
-      sceneConstructor: ProjectScene
+      sceneConstructor: projectScene as any
     });
-    
+
     // Сбрасываем все моки перед каждым тестом
     sceneTester.resetMocks();
   });
@@ -38,8 +40,8 @@ describe("ProjectScene - Пример использования фреймво�
       const mockProjects = [{ id: 1, user_id: 1, name: "Test Project", created_at: new Date().toISOString(), is_active: true }];
 
       sceneTester.updateAdapter({
-        getUserByTelegramId: jest.fn().mockResolvedValue(mockUser),
-        getProjectsByUserId: jest.fn().mockResolvedValue(mockProjects),
+        getUserByTelegramId: jest.fn().mockImplementation(() => Promise.resolve(mockUser)),
+        getProjectsByUserId: jest.fn().mockImplementation(() => Promise.resolve(mockProjects)),
       });
 
       // Вызываем обработчик входа в сцену
@@ -61,9 +63,9 @@ describe("ProjectScene - Пример использования фреймво�
       const mockProject = { id: 1, user_id: 1, name: "New Project", created_at: new Date().toISOString(), is_active: true };
 
       sceneTester.updateAdapter({
-        getUserByTelegramId: jest.fn().mockResolvedValue(mockUser),
-        getProjectsByUserId: jest.fn().mockResolvedValue([]),
-        createProject: jest.fn().mockResolvedValue(mockProject),
+        getUserByTelegramId: jest.fn().mockImplementation(() => Promise.resolve(mockUser)),
+        getProjectsByUserId: jest.fn().mockImplementation(() => Promise.resolve([])),
+        createProject: jest.fn().mockImplementation(() => Promise.resolve(mockProject)),
       });
 
       // Создаем тестер последовательностей
@@ -82,7 +84,7 @@ describe("ProjectScene - Пример использования фреймво�
         .addButtonClick(
           "Нажатие на кнопку создания проекта",
           "create_project",
-          "handleCreateProjectAction" as keyof ProjectScene,
+          "handleCreateProjectAction" as any,
           {},
           (tester) => {
             expectSceneStep(tester.getContext(), ScraperSceneStep.CREATE_PROJECT);
@@ -92,7 +94,7 @@ describe("ProjectScene - Пример использования фреймво�
         .addTextInput(
           "Ввод названия проекта",
           "New Project",
-          "handleProjectSceneText" as keyof ProjectScene,
+          "handleProjectSceneText" as any,
           {
             sessionData: {
               step: ScraperSceneStep.CREATE_PROJECT
@@ -113,7 +115,7 @@ describe("ProjectScene - Пример использования фреймво�
     // Создаем шаблон для тестирования создания проекта
     createProjectCreationTestTemplate(
       sceneTester,
-      "handleProjectSceneText" as keyof ProjectScene
+      "handleProjectSceneText" as any
     );
   });
 
@@ -125,8 +127,8 @@ describe("ProjectScene - Пример использования фреймво�
       const mockProject = { id: 1, user_id: 1, name: "Test Project", created_at: new Date().toISOString(), is_active: true };
 
       sceneTester.updateAdapter({
-        getUserByTelegramId: jest.fn().mockResolvedValue(mockUser),
-        getProjectById: jest.fn().mockResolvedValue(mockProject),
+        getUserByTelegramId: jest.fn().mockImplementation(() => Promise.resolve(mockUser)),
+        getProjectById: jest.fn().mockImplementation(() => Promise.resolve(mockProject)),
       });
 
       // Обновляем контекст
@@ -139,7 +141,7 @@ describe("ProjectScene - Пример использования фреймво�
       });
 
       // Вызываем метод сцены
-      await sceneTester.callSceneMethod("handleSelectProjectAction", sceneTester.getContext());
+      await sceneTester.callSceneMethod("handleSelectProjectAction" as any, sceneTester.getContext());
 
       // Проверяем состояние сцены
       expectSceneStep(sceneTester.getContext(), ScraperSceneStep.PROJECT_MENU);

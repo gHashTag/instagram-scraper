@@ -13,6 +13,7 @@ import type {
   InstagramScraperBotConfig,
   StorageAdapter,
 } from "../../types";
+import { createMockStorageAdapter } from "../helpers/types";
 
 describe.skip("E2E: Command Handlers", () => {
   let bot: Telegraf<ScraperBotContext>;
@@ -29,26 +30,7 @@ describe.skip("E2E: Command Handlers", () => {
     mockSceneEnter = jest.fn();
 
     // Создаем мок для хранилища
-    mockStorage = {
-      initialize: jest.fn(),
-      close: jest.fn(),
-      findUserByTelegramIdOrCreate: jest.fn(),
-      getUserByTelegramId: jest.fn(),
-      getProjectsByUserId: jest.fn(),
-      getProjectById: jest.fn(),
-      createProject: jest.fn(),
-      getHashtagsByProjectId: jest.fn(),
-      addHashtag: jest.fn(),
-      removeHashtag: jest.fn(),
-      getCompetitorAccounts: jest.fn(),
-      addCompetitorAccount: jest.fn(),
-      deleteCompetitorAccount: jest.fn(),
-      getReelsByProjectId: jest.fn(),
-      saveReels: jest.fn(),
-      getParsingLogsByProjectId: jest.fn(),
-      createParsingLog: jest.fn(),
-      updateParsingLog: jest.fn(),
-    };
+    mockStorage = createMockStorageAdapter();
 
     // Создаем бот с мидлварой для мокирования scene.enter
     bot = new Telegraf<ScraperBotContext>("test-bot-token");

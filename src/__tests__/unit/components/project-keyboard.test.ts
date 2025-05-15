@@ -1,4 +1,4 @@
-import { describe, it, expect, jest, mock } from "bun:test";
+import { describe, it, expect, mock } from "bun:test";
 import {
   generateProjectsKeyboard,
   generateProjectMenuKeyboard,
@@ -8,11 +8,11 @@ import {
 // Мокируем Markup из telegraf
 mock.module("telegraf", () => ({
   Markup: {
-    inlineKeyboard: (buttons) => ({
+    inlineKeyboard: (buttons: any[][]) => ({
       reply_markup: { inline_keyboard: buttons },
     }),
     button: {
-      callback: (text, data) => ({
+      callback: (text: string, data: string) => ({
         text,
         callback_data: data,
       }),

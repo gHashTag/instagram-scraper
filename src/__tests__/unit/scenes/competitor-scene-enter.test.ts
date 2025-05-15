@@ -1,9 +1,10 @@
 import { describe, it, expect, jest, mock, beforeEach, afterEach, spyOn } from "bun:test";
 import { handleCompetitorEnter } from "../../../scenes/competitor-scene";
-import { NeonAdapter } from "../../../adapters/neon-adapter";
-import { ScraperBotContext, User, Project, Competitor } from "@/types";
-import { Context as TelegrafContext } from "telegraf";
-import { Update, UserFromGetMe } from "telegraf/types";
+import { ScraperBotContext } from "@/types";
+import { MockedNeonAdapterType, createMockNeonAdapter } from "../../helpers/types";
+import { createMockUser, createMockProject, createMockCompetitor } from "../../helpers/mocks";
+
+// Определяем тип для тестового контекста (удаляем, так как он определен ниже)
 
 // Мокируем зависимости
 mock.module("../../../logger", () => {
@@ -29,30 +30,16 @@ mock.module("../../../adapters/neon-adapter", () => {
   };
 });
 
-// Создаем тип для мокированного адаптера
-type MockedNeonAdapterType = {
-  initialize: jest.Mock;
-  close: jest.Mock;
-  getUserByTelegramId: jest.Mock;
-  getProjectsByUserId: jest.Mock;
-  getCompetitorAccounts: jest.Mock;
-};
+// Используем импортированный тип MockedNeonAdapterType
 
 // Создаем тип для контекста
-type TestContext = ScraperBotContext & {
-  scene: {
-    session: any;
-    enter: jest.Mock;
-    leave: jest.Mock;
-    reenter: jest.Mock;
-  };
-};
+type TestContext = ScraperBotContext;
 
 // Функция для создания мок-контекста
 const createMockContext = (fromId: number = 123456789): TestContext => {
   // Создаем базовый контекст
   const ctx = {
-    storage: null as any,
+    storage: createMockNeonAdapter(),
     from: {
       id: fromId,
       is_bot: false,
@@ -65,16 +52,23 @@ const createMockContext = (fromId: number = 123456789): TestContext => {
       enter: jest.fn(),
       leave: jest.fn(),
       reenter: jest.fn(),
+      // Добавляем необходимые свойства для соответствия типу SceneContextScene
+      ctx: {} as any,
+      scenes: {} as any,
+      options: {} as any,
+      state: {} as any,
+      current: "competitor",
+      reset: jest.fn(),
+      leaving: false,
     },
-    reply: jest.fn().mockResolvedValue(true),
-    editMessageReplyMarkup: jest.fn().mockResolvedValue(true),
-    deleteMessage: jest.fn().mockResolvedValue(true),
-    answerCbQuery: jest.fn().mockResolvedValue(true),
-  } as TestContext;
+    reply: jest.fn().mockImplementation(() => Promise.resolve()),
+    editMessageReplyMarkup: jest.fn().mockImplementation(() => Promise.resolve()),
+    deleteMessage: jest.fn().mockImplementation(() => Promise.resolve()),
+    answerCbQuery: jest.fn().mockImplementation(() => Promise.resolve()),
+  } as unknown as TestContext;
 
-  // Создаем и устанавливаем адаптер
-  const adapterInstance = new NeonAdapter();
-  ctx.storage = adapterInstance as unknown as MockedNeonAdapterType;
+  // Создаем и устанавливаем мок адаптера
+  ctx.storage = createMockNeonAdapter();
 
   return ctx;
 };
@@ -85,7 +79,7 @@ describe("competitorScene - Enter Handler", () => {
 
   beforeEach(() => {
     ctx = createMockContext();
-    consoleErrorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+    consoleErrorSpy = spyOn(console, "error").mockImplementation(() => {});
     jest.clearAllMocks();
   });
 
@@ -115,12 +109,12 @@ describe("competitorScene - Enter Handler", () => {
     expect((ctx.storage as MockedNeonAdapterType).close).toHaveBeenCalled();
 
     // Проверяем, что был вызван метод leave
-    expect(ctx.scene.leave).toHaveBeenCalled();
+    expect(ctx.scene?.leave).toHaveBeenCalled();
   });
 
   it("should leave scene if user has no projects", async () => {
     // Мокируем результаты запросов
-    const mockUser: User = { id: 1, telegram_id: 123456789, username: "testuser" };
+    const mockUser = createMockUser({ id: 1, telegram_id: 123456789, username: "testuser" });
     (ctx.storage as MockedNeonAdapterType).getUserByTelegramId.mockResolvedValue(mockUser);
     (ctx.storage as MockedNeonAdapterType).getProjectsByUserId.mockResolvedValue([]);
 
@@ -145,16 +139,18 @@ describe("competitorScene - Enter Handler", () => {
     expect((ctx.storage as MockedNeonAdapterType).close).toHaveBeenCalled();
 
     // Проверяем, что был вызван метод leave
-    expect(ctx.scene.leave).toHaveBeenCalled();
+    expect(ctx.scene?.leave).toHaveBeenCalled();
   });
 
   it("should show competitors list when user has one project with competitors", async () => {
     // Мокируем результаты запросов
-    const mockUser: User = { id: 1, telegram_id: 123456789, username: "testuser" };
-    const mockProjects: Project[] = [{ id: 1, user_id: 1, name: "Test Project" }];
-    const mockCompetitors: Competitor[] = [
-      { id: 1, project_id: 1, username: "competitor1", instagram_url: "https://instagram.com/competitor1", is_active: true },
-      { id: 2, project_id: 1, username: "competitor2", instagram_url: "https://instagram.com/competitor2", is_active: true }
+    const mockUser = createMockUser({ id: 1, telegram_id: 123456789, username: "testuser" });
+    const mockProjects = [
+      createMockProject({ id: 1, user_id: 1, name: "Test Project" })
+    ];
+    const mockCompetitors = [
+      createMockCompetitor({ id: 1, project_id: 1, username: "competitor1", instagram_url: "https://instagram.com/competitor1" }),
+      createMockCompetitor({ id: 2, project_id: 1, username: "competitor2", instagram_url: "https://instagram.com/competitor2" })
     ];
 
     (ctx.storage as MockedNeonAdapterType).getUserByTelegramId.mockResolvedValue(mockUser);
@@ -188,8 +184,10 @@ describe("competitorScene - Enter Handler", () => {
 
   it("should show add competitor message when user has one project without competitors", async () => {
     // Мокируем результаты запросов
-    const mockUser: User = { id: 1, telegram_id: 123456789, username: "testuser" };
-    const mockProjects: Project[] = [{ id: 1, user_id: 1, name: "Test Project" }];
+    const mockUser = createMockUser({ id: 1, telegram_id: 123456789, username: "testuser" });
+    const mockProjects = [
+      createMockProject({ id: 1, user_id: 1, name: "Test Project" })
+    ];
 
     (ctx.storage as MockedNeonAdapterType).getUserByTelegramId.mockResolvedValue(mockUser);
     (ctx.storage as MockedNeonAdapterType).getProjectsByUserId.mockResolvedValue(mockProjects);
@@ -222,10 +220,10 @@ describe("competitorScene - Enter Handler", () => {
 
   it("should show project selection when user has multiple projects", async () => {
     // Мокируем результаты запросов
-    const mockUser: User = { id: 1, telegram_id: 123456789, username: "testuser" };
-    const mockProjects: Project[] = [
-      { id: 1, user_id: 1, name: "Project 1" },
-      { id: 2, user_id: 1, name: "Project 2" }
+    const mockUser = createMockUser({ id: 1, telegram_id: 123456789, username: "testuser" });
+    const mockProjects = [
+      createMockProject({ id: 1, user_id: 1, name: "Project 1" }),
+      createMockProject({ id: 2, user_id: 1, name: "Project 2" })
     ];
 
     (ctx.storage as MockedNeonAdapterType).getUserByTelegramId.mockResolvedValue(mockUser);
@@ -275,6 +273,6 @@ describe("competitorScene - Enter Handler", () => {
     );
 
     // Проверяем, что был вызван метод leave
-    expect(ctx.scene.leave).toHaveBeenCalled();
+    expect(ctx.scene?.leave).toHaveBeenCalled();
   });
 });

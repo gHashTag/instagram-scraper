@@ -1,5 +1,5 @@
-import { describe, it, expect, mock } from "bun:test";
-import { isValidProjectName } from "../../../utils/validation";
+import { describe, it, expect } from "bun:test";
+// Импорт isValidProjectName не используется
 
 // Создаем простую функцию для тестирования
 function testIsValidProjectName(name: string): boolean {

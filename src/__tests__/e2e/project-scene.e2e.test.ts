@@ -5,9 +5,10 @@ import {
   beforeEach,
   jest,
 } from "bun:test";
-import { Scenes } from "telegraf";
 import { handleProjectEnter, handleCreateProjectAction, handleProjectText, handleProjectSelectionAction } from "../../scenes/project-scene";
 import { ScraperSceneStep } from "../../types";
+import { createMockStorageAdapter } from "../helpers/types";
+import { createMockUser, createMockProject } from "../helpers/mocks";
 
 describe("E2E: Project Scene", () => {
   let mockContext: any;
@@ -15,39 +16,33 @@ describe("E2E: Project Scene", () => {
 
   beforeEach(() => {
     // Создаем мок для хранилища
-    mockStorage = {
-      initialize: jest.fn().mockResolvedValue(undefined),
-      close: jest.fn().mockResolvedValue(undefined),
-      findUserByTelegramIdOrCreate: jest.fn().mockResolvedValue({
-        id: 1,
-        telegram_id: 123456789,
-        username: "testuser",
-        created_at: new Date().toISOString(),
-        is_active: true,
-      }),
-      getUserByTelegramId: jest.fn().mockResolvedValue({
-        id: 1,
-        telegram_id: 123456789,
-        username: "testuser",
-        created_at: new Date().toISOString(),
-        is_active: true,
-      }),
-      getProjectsByUserId: jest.fn().mockResolvedValue([]),
-      getProjectById: jest.fn().mockResolvedValue({
-        id: 1,
-        user_id: 1,
-        name: "Test Project",
-        created_at: new Date().toISOString(),
-        is_active: true,
-      }),
-      createProject: jest.fn().mockResolvedValue({
-        id: 1,
-        user_id: 1,
-        name: "New Project",
-        created_at: new Date().toISOString(),
-        is_active: true,
-      }),
-    };
+    mockStorage = createMockStorageAdapter();
+
+    // Создаем моки для пользователя и проектов
+    const mockUser = createMockUser({
+      id: 1,
+      telegram_id: 123456789,
+      username: "testuser"
+    });
+
+    const testProject = createMockProject({
+      id: 1,
+      user_id: 1,
+      name: "Test Project"
+    });
+
+    const newProject = createMockProject({
+      id: 1,
+      user_id: 1,
+      name: "New Project"
+    });
+
+    // Настраиваем моки с использованием mockImplementation
+    (mockStorage.findUserByTelegramIdOrCreate as jest.Mock).mockImplementation(() => Promise.resolve(mockUser));
+    (mockStorage.getUserByTelegramId as jest.Mock).mockImplementation(() => Promise.resolve(mockUser));
+    (mockStorage.getProjectsByUserId as jest.Mock).mockImplementation(() => Promise.resolve([]));
+    (mockStorage.getProjectById as jest.Mock).mockImplementation(() => Promise.resolve(testProject));
+    (mockStorage.createProject as jest.Mock).mockImplementation(() => Promise.resolve(newProject));
 
     // Создаем мок для контекста
     mockContext = {

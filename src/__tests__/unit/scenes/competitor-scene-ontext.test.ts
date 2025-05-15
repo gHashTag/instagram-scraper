@@ -6,19 +6,20 @@ import {
   afterEach,
   jest,
   mock,
-  spyOn,
+  spyOn
 } from "bun:test";
-import { Scenes, Context as TelegrafContext } from "telegraf";
-import { Update, UserFromGetMe, Message } from "telegraf/types";
-import { NeonAdapter } from "../../../adapters/neon-adapter";
+import { Context as TelegrafContext } from "telegraf";
+import { UserFromGetMe } from "telegraf/types";
 import {
   ScraperBotContext,
   ScraperSceneStep,
-  Project,
-  Competitor,
-  User,
   ScraperSceneSessionData,
+  User,
+  Project,
+  Competitor
 } from "@/types";
+import { MockedNeonAdapterType, createMockNeonAdapter } from "../../helpers/types";
+import { createMockCompetitor, createMockUser } from "../../helpers/mocks";
 import { handleCompetitorText } from "../../../scenes/competitor-scene";
 
 // Мокируем NeonAdapter
@@ -77,12 +78,12 @@ mock.module("../../../adapters/neon-adapter", () => {
 
 // This type should precisely match what handleCompetitorText expects
 type TextHandlerTestContext = ScraperBotContext & {
-  message: Message.TextMessage; // Crucially, message.text must be string and no edit_date
+  message: any; // Crucially, message.text must be string and no edit_date
   scene: {
     session: ScraperSceneSessionData;
-    enter: jest.Mock<any, any>;
-    leave: jest.Mock<any, any>;
-    reenter: jest.Mock<any, any>;
+    enter: jest.Mock;
+    leave: jest.Mock;
+    reenter: jest.Mock;
   };
   // storage is already part of ScraperBotContext, and createMockTextContext ensures it's a MockedNeonAdapterType
 };
@@ -102,7 +103,7 @@ const createMockTextContext = (
     supports_inline_queries: true,
   };
 
-  const messagePayload: Omit<Message.TextMessage, "edit_date"> = {
+  const messagePayload = {
     // Omit edit_date for "New" message
     message_id: 1,
     date: Math.floor(Date.now() / 1000),
@@ -121,19 +122,19 @@ const createMockTextContext = (
     text: messageText,
   };
 
-  const updatePayload: Update.MessageUpdate = {
+  const updatePayload = {
     update_id: Date.now(),
-    message: messagePayload as Message.TextMessage, // Cast after ensuring no edit_date
+    message: messagePayload,
   };
 
-  const ctx = new TelegrafContext(
+  const ctx = new (TelegrafContext as any)(
     updatePayload,
     {} as any,
     botInfo
   ) as TextHandlerTestContext;
 
-  const adapterInstance = new NeonAdapter();
-  ctx.storage = adapterInstance as MockedNeonAdapterType;
+  // Создаем мок адаптера вместо реального экземпляра
+  ctx.storage = createMockNeonAdapter();
 
   ctx.scene = {
     enter: jest.fn(),
@@ -167,8 +168,9 @@ describe("competitorScene - On Text Handler (ADD_COMPETITOR step) - Direct Call"
 
   it("should reply with error if URL is invalid", async () => {
     // Мокируем isValidInstagramUrl для этого теста
-    const originalIsValidInstagramUrl = require("../../../utils/validation").isValidInstagramUrl;
-    jest.spyOn(require("../../../utils/validation"), "isValidInstagramUrl").mockReturnValue(false);
+    const validationModule = require("../../../utils/validation");
+    const originalIsValidInstagramUrl = validationModule.isValidInstagramUrl;
+    validationModule.isValidInstagramUrl = jest.fn().mockReturnValue(false);
 
     ctx = createMockTextContext("невалидный урл", {
       step: ScraperSceneStep.ADD_COMPETITOR,
@@ -183,7 +185,7 @@ describe("competitorScene - On Text Handler (ADD_COMPETITOR step) - Direct Call"
     expect(ctx.scene.reenter).not.toHaveBeenCalled();
 
     // Восстанавливаем оригинальную функцию
-    jest.spyOn(require("../../../utils/validation"), "isValidInstagramUrl").mockRestore();
+    validationModule.isValidInstagramUrl = originalIsValidInstagramUrl;
   });
 
   it("should successfully add a competitor", async () => {
@@ -199,26 +201,22 @@ describe("competitorScene - On Text Handler (ADD_COMPETITOR step) - Direct Call"
       1
     );
 
-    const competitorMock: Competitor = {
+    const competitorMock = createMockCompetitor({
       id: 300,
       project_id: projectId,
       username: username,
-      instagram_url: instagramUrl,
-      created_at: new Date().toISOString(),
-      is_active: true,
-    };
-    const userMock: User = {
+      instagram_url: instagramUrl
+    });
+    const userMock = createMockUser({
       id: 1,
       telegram_id: 1,
-      username: "testuser",
-      created_at: new Date().toISOString(),
-      is_active: true,
-    };
+      username: "testuser"
+    });
     (
-      ctx.storage as jest.Mocked<NeonAdapter>
+      ctx.storage as MockedNeonAdapterType
     ).getUserByTelegramId.mockResolvedValue(userMock);
     (
-      ctx.storage as jest.Mocked<NeonAdapter>
+      ctx.storage as MockedNeonAdapterType
     ).addCompetitorAccount.mockResolvedValue(competitorMock);
 
     await handleCompetitorText(ctx);
@@ -226,10 +224,10 @@ describe("competitorScene - On Text Handler (ADD_COMPETITOR step) - Direct Call"
     // Проверка вызова initialize может быть нестабильной из-за мокирования
     // Важнее проверить, что другие методы адаптера вызываются корректно
     expect(
-      (ctx.storage as jest.Mocked<NeonAdapter>).getUserByTelegramId
+      (ctx.storage as MockedNeonAdapterType).getUserByTelegramId
     ).toHaveBeenCalledWith(1);
     expect(
-      (ctx.storage as jest.Mocked<NeonAdapter>).addCompetitorAccount
+      (ctx.storage as MockedNeonAdapterType).addCompetitorAccount
     ).toHaveBeenCalled();
     expect(ctx.reply).toHaveBeenCalledWith(
       `Конкурент @${username} успешно добавлен!`,
@@ -237,7 +235,7 @@ describe("competitorScene - On Text Handler (ADD_COMPETITOR step) - Direct Call"
     );
     expect(ctx.scene.session.step).toBeUndefined();
     expect(
-      (ctx.storage as jest.Mocked<NeonAdapter>).close
+      (ctx.storage as MockedNeonAdapterType).close
     ).toHaveBeenCalledTimes(1);
   });
 
@@ -254,35 +252,33 @@ describe("competitorScene - On Text Handler (ADD_COMPETITOR step) - Direct Call"
       1
     );
 
-    const userMock: User = {
+    const userMock = createMockUser({
       id: 1,
       telegram_id: 1,
-      username: "testuser",
-      created_at: new Date().toISOString(),
-      is_active: true,
-    };
+      username: "testuser"
+    });
     (
-      ctx.storage as jest.Mocked<NeonAdapter>
+      ctx.storage as MockedNeonAdapterType
     ).getUserByTelegramId.mockResolvedValue(userMock);
     (
-      ctx.storage as jest.Mocked<NeonAdapter>
+      ctx.storage as MockedNeonAdapterType
     ).addCompetitorAccount.mockResolvedValue(null);
 
     await handleCompetitorText(ctx);
 
     expect(
-      (ctx.storage as jest.Mocked<NeonAdapter>).initialize
+      (ctx.storage as MockedNeonAdapterType).initialize
     ).toHaveBeenCalledTimes(1);
     expect(
-      (ctx.storage as jest.Mocked<NeonAdapter>).getUserByTelegramId
+      (ctx.storage as MockedNeonAdapterType).getUserByTelegramId
     ).toHaveBeenCalledWith(1);
     expect(
-      (ctx.storage as jest.Mocked<NeonAdapter>).addCompetitorAccount
+      (ctx.storage as MockedNeonAdapterType).addCompetitorAccount
     ).toHaveBeenCalled();
     expect(ctx.reply).toHaveBeenCalled();
     expect(ctx.scene.session.step).toBeUndefined();
     expect(
-      (ctx.storage as jest.Mocked<NeonAdapter>).close
+      (ctx.storage as MockedNeonAdapterType).close
     ).toHaveBeenCalledTimes(1);
   });
 
@@ -299,16 +295,16 @@ describe("competitorScene - On Text Handler (ADD_COMPETITOR step) - Direct Call"
     );
 
     (
-      ctx.storage as jest.Mocked<NeonAdapter>
+      ctx.storage as MockedNeonAdapterType
     ).getUserByTelegramId.mockResolvedValue(null);
 
     await handleCompetitorText(ctx);
 
     expect(
-      (ctx.storage as jest.Mocked<NeonAdapter>).initialize
+      (ctx.storage as MockedNeonAdapterType).initialize
     ).toHaveBeenCalledTimes(1);
     expect(
-      (ctx.storage as jest.Mocked<NeonAdapter>).getUserByTelegramId
+      (ctx.storage as MockedNeonAdapterType).getUserByTelegramId
     ).toHaveBeenCalledWith(999);
     expect(consoleErrorSpy).toHaveBeenCalledWith(
       expect.stringContaining("User not found for telegramId: 999")
@@ -319,10 +315,10 @@ describe("competitorScene - On Text Handler (ADD_COMPETITOR step) - Direct Call"
     expect(ctx.scene.session.step).toBeUndefined();
     expect(ctx.scene.leave).toHaveBeenCalledTimes(1);
     expect(
-      (ctx.storage as jest.Mocked<NeonAdapter>).addCompetitorAccount
+      (ctx.storage as MockedNeonAdapterType).addCompetitorAccount
     ).not.toHaveBeenCalled();
     expect(
-      (ctx.storage as jest.Mocked<NeonAdapter>).close
+      (ctx.storage as MockedNeonAdapterType).close
     ).toHaveBeenCalledTimes(1);
   });
 
@@ -339,31 +335,29 @@ describe("competitorScene - On Text Handler (ADD_COMPETITOR step) - Direct Call"
       1
     );
 
-    const userMock: User = {
+    const userMock = createMockUser({
       id: 1,
       telegram_id: 1,
-      username: "testuser",
-      created_at: new Date().toISOString(),
-      is_active: true,
-    };
+      username: "testuser"
+    });
     const dbError = new Error("DB boom!");
     (
-      ctx.storage as jest.Mocked<NeonAdapter>
+      ctx.storage as MockedNeonAdapterType
     ).getUserByTelegramId.mockResolvedValue(userMock);
     (
-      ctx.storage as jest.Mocked<NeonAdapter>
+      ctx.storage as MockedNeonAdapterType
     ).addCompetitorAccount.mockRejectedValue(dbError);
 
     await handleCompetitorText(ctx);
 
     expect(
-      (ctx.storage as jest.Mocked<NeonAdapter>).initialize
+      (ctx.storage as MockedNeonAdapterType).initialize
     ).toHaveBeenCalledTimes(1);
     expect(
-      (ctx.storage as jest.Mocked<NeonAdapter>).getUserByTelegramId
+      (ctx.storage as MockedNeonAdapterType).getUserByTelegramId
     ).toHaveBeenCalledWith(1);
     expect(
-      (ctx.storage as jest.Mocked<NeonAdapter>).addCompetitorAccount
+      (ctx.storage as MockedNeonAdapterType).addCompetitorAccount
     ).toHaveBeenCalled();
     expect(consoleErrorSpy).toHaveBeenCalledWith(
       "Ошибка при добавлении конкурента в сцене:",
@@ -374,7 +368,7 @@ describe("competitorScene - On Text Handler (ADD_COMPETITOR step) - Direct Call"
     );
     expect(ctx.scene.session.step).toBeUndefined();
     expect(
-      (ctx.storage as jest.Mocked<NeonAdapter>).close
+      (ctx.storage as MockedNeonAdapterType).close
     ).toHaveBeenCalledTimes(1);
   });
 
@@ -388,7 +382,7 @@ describe("competitorScene - On Text Handler (ADD_COMPETITOR step) - Direct Call"
 
     expect(ctx.reply).not.toHaveBeenCalled();
     expect(
-      (ctx.storage as jest.Mocked<NeonAdapter>).initialize
+      (ctx.storage as MockedNeonAdapterType).initialize
     ).not.toHaveBeenCalled();
   });
 
@@ -405,14 +399,15 @@ describe("competitorScene - On Text Handler (ADD_COMPETITOR step) - Direct Call"
     );
     expect(ctx.scene.reenter).toHaveBeenCalledTimes(1);
     expect(
-      (ctx.storage as jest.Mocked<NeonAdapter>).initialize
+      (ctx.storage as MockedNeonAdapterType).initialize
     ).not.toHaveBeenCalled();
   });
 
   it("should reply with error if username cannot be extracted from URL", async () => {
     // Мокируем extractUsernameFromUrl для этого теста
-    const originalExtractUsernameFromUrl = require("../../../utils/validation").extractUsernameFromUrl;
-    jest.spyOn(require("../../../utils/validation"), "extractUsernameFromUrl").mockReturnValue(null);
+    const validationModule = require("../../../utils/validation");
+    const originalExtractUsernameFromUrl = validationModule.extractUsernameFromUrl;
+    validationModule.extractUsernameFromUrl = jest.fn().mockReturnValue(null);
 
     ctx = createMockTextContext(
       "https://www.instagram.com/",
@@ -422,15 +417,13 @@ describe("competitorScene - On Text Handler (ADD_COMPETITOR step) - Direct Call"
       },
       1
     );
-    const userMock: User = {
+    const userMock = createMockUser({
       id: 1,
       telegram_id: 1,
-      username: "testuser",
-      created_at: new Date().toISOString(),
-      is_active: true,
-    };
+      username: "testuser"
+    });
     (
-      ctx.storage as jest.Mocked<NeonAdapter>
+      ctx.storage as MockedNeonAdapterType
     ).getUserByTelegramId.mockResolvedValue(userMock);
 
     await handleCompetitorText(ctx);
@@ -441,22 +434,23 @@ describe("competitorScene - On Text Handler (ADD_COMPETITOR step) - Direct Call"
       "Не удалось извлечь имя пользователя из URL. Пожалуйста, проверьте URL и попробуйте снова."
     );
     expect(
-      (ctx.storage as jest.Mocked<NeonAdapter>).addCompetitorAccount
+      (ctx.storage as MockedNeonAdapterType).addCompetitorAccount
     ).not.toHaveBeenCalled();
 
     // Восстанавливаем оригинальную функцию
-    jest.spyOn(require("../../../utils/validation"), "extractUsernameFromUrl").mockRestore();
+    validationModule.extractUsernameFromUrl = originalExtractUsernameFromUrl;
   });
 });
 
-// Correctly type the context passed to the handler
-interface HandleCompetitorTextContext extends ScraperBotContext {
-  message: Message.TextMessage & { edit_date: undefined };
+// Используем тот же тип, что и в handleCompetitorText
+type HandleCompetitorTextContext = ScraperBotContext & {
   scene: {
     session: ScraperSceneSessionData;
-    enter: jest.Mock;
-    leave: jest.Mock;
-    reenter: jest.Mock;
+    leave: () => void;
+    reenter: () => void;
+  };
+  message: {
+    text: string;
   };
 }
 
@@ -477,8 +471,9 @@ describe("handleCompetitorText", () => {
 
   it("should reply with error if URL is invalid", async () => {
     // Мокируем isValidInstagramUrl для этого теста
-    const originalIsValidInstagramUrl = require("../../../utils/validation").isValidInstagramUrl;
-    jest.spyOn(require("../../../utils/validation"), "isValidInstagramUrl").mockReturnValue(false);
+    const validationModule = require("../../../utils/validation");
+    const originalIsValidInstagramUrl = validationModule.isValidInstagramUrl;
+    validationModule.isValidInstagramUrl = jest.fn().mockReturnValue(false);
 
     ctx = createMockTextContext("невалидный урл", {
       step: ScraperSceneStep.ADD_COMPETITOR,
@@ -496,7 +491,7 @@ describe("handleCompetitorText", () => {
     ).not.toHaveBeenCalled();
 
     // Восстанавливаем оригинальную функцию
-    jest.spyOn(require("../../../utils/validation"), "isValidInstagramUrl").mockRestore();
+    validationModule.isValidInstagramUrl = originalIsValidInstagramUrl;
   });
 
   it("should successfully add a competitor", async () => {
@@ -512,21 +507,17 @@ describe("handleCompetitorText", () => {
       1
     );
 
-    const competitorMock: Competitor = {
+    const competitorMock = createMockCompetitor({
       id: 300,
       project_id: projectId,
       username: username,
-      instagram_url: instagramUrl,
-      created_at: new Date().toISOString(),
-      is_active: true,
-    };
-    const userMock: User = {
+      instagram_url: instagramUrl
+    });
+    const userMock = createMockUser({
       id: 1,
       telegram_id: 1,
-      username: "testuser",
-      created_at: new Date().toISOString(),
-      is_active: true,
-    };
+      username: "testuser"
+    });
     (
       ctx.storage as MockedNeonAdapterType
     ).getUserByTelegramId.mockResolvedValue(userMock);
@@ -567,13 +558,11 @@ describe("handleCompetitorText", () => {
       1
     );
 
-    const userMock: User = {
+    const userMock = createMockUser({
       id: 1,
       telegram_id: 1,
-      username: "testuser",
-      created_at: new Date().toISOString(),
-      is_active: true,
-    };
+      username: "testuser"
+    });
     (
       ctx.storage as MockedNeonAdapterType
     ).getUserByTelegramId.mockResolvedValue(userMock);
@@ -652,13 +641,11 @@ describe("handleCompetitorText", () => {
       1
     );
 
-    const userMock: User = {
+    const userMock = createMockUser({
       id: 1,
       telegram_id: 1,
-      username: "testuser",
-      created_at: new Date().toISOString(),
-      is_active: true,
-    };
+      username: "testuser"
+    });
     const dbError = new Error("DB boom!");
     (
       ctx.storage as MockedNeonAdapterType
@@ -724,8 +711,9 @@ describe("handleCompetitorText", () => {
 
   it("should reply with error if username cannot be extracted from URL", async () => {
     // Мокируем extractUsernameFromUrl для этого теста
-    const originalExtractUsernameFromUrl = require("../../../utils/validation").extractUsernameFromUrl;
-    jest.spyOn(require("../../../utils/validation"), "extractUsernameFromUrl").mockReturnValue(null);
+    const validationModule = require("../../../utils/validation");
+    const originalExtractUsernameFromUrl = validationModule.extractUsernameFromUrl;
+    validationModule.extractUsernameFromUrl = jest.fn().mockReturnValue(null);
 
     ctx = createMockTextContext(
       "https://www.instagram.com/",
@@ -735,13 +723,11 @@ describe("handleCompetitorText", () => {
       },
       1
     );
-    const userMock: User = {
+    const userMock = createMockUser({
       id: 1,
       telegram_id: 1,
-      username: "testuser",
-      created_at: new Date().toISOString(),
-      is_active: true,
-    };
+      username: "testuser"
+    });
     (
       ctx.storage as MockedNeonAdapterType
     ).getUserByTelegramId.mockResolvedValue(userMock);
@@ -758,6 +744,6 @@ describe("handleCompetitorText", () => {
     ).not.toHaveBeenCalled();
 
     // Восстанавливаем оригинальную функцию
-    jest.spyOn(require("../../../utils/validation"), "extractUsernameFromUrl").mockRestore();
+    validationModule.extractUsernameFromUrl = originalExtractUsernameFromUrl;
   });
 });

@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, jest } from "bun:test";
 import { NeonAdapter } from "../../../adapters/neon-adapter";
 import { mockPool, resetMocks } from "../../mocks/pg-mock";
+import { createMockUser, createMockProject, createMockCompetitor, createMockHashtag, createMockReelContent, createMockParsingRunLog } from "../../helpers/mocks";
 
 // Пропускаем тесты при запуске всех тестов вместе
 // Это нужно, потому что моки не сохраняются между запусками тестов
@@ -57,7 +58,7 @@ const runningAllTests = process.env.BUN_TEST_PATTERN === undefined;
   describe("getUserByTelegramId", () => {
     it("should return user if found", async () => {
       // Мокируем результат запроса
-      const mockUser = { id: 1, telegram_id: 123456789, username: "testuser" };
+      const mockUser = createMockUser({ id: 1, telegram_id: 123456789, username: "testuser" });
       (mockPool.query as jest.Mock).mockResolvedValueOnce({ rows: [mockUser] });
 
       // Вызываем метод
@@ -88,7 +89,7 @@ const runningAllTests = process.env.BUN_TEST_PATTERN === undefined;
   describe("findUserByTelegramIdOrCreate", () => {
     it("should return existing user if found", async () => {
       // Мокируем результат запроса getUserByTelegramId
-      const mockUser = { id: 1, telegram_id: 123456789, username: "testuser" };
+      const mockUser = createMockUser({ id: 1, telegram_id: 123456789, username: "testuser" });
       (mockPool.query as jest.Mock).mockResolvedValueOnce({ rows: [mockUser] });
 
       // Вызываем метод
@@ -112,7 +113,7 @@ const runningAllTests = process.env.BUN_TEST_PATTERN === undefined;
       (mockPool.query as jest.Mock).mockResolvedValueOnce({ rows: [] });
 
       // Мокируем результат запроса createUser
-      const mockUser = { id: 1, telegram_id: 123456789, username: "testuser" };
+      const mockUser = createMockUser({ id: 1, telegram_id: 123456789, username: "testuser", first_name: "Test", last_name: "User" });
       (mockPool.query as jest.Mock).mockResolvedValueOnce({ rows: [mockUser] });
 
       // Вызываем метод
@@ -147,8 +148,8 @@ const runningAllTests = process.env.BUN_TEST_PATTERN === undefined;
     it("should return projects for a user", async () => {
       // Мокируем результат запроса
       const mockProjects = [
-        { id: 1, user_id: 1, name: "Project 1" },
-        { id: 2, user_id: 1, name: "Project 2" }
+        createMockProject({ id: 1, user_id: 1, name: "Project 1" }),
+        createMockProject({ id: 2, user_id: 1, name: "Project 2" })
       ];
       (mockPool.query as jest.Mock).mockResolvedValueOnce({ rows: mockProjects });
 
@@ -180,7 +181,7 @@ const runningAllTests = process.env.BUN_TEST_PATTERN === undefined;
   describe("getProjectById", () => {
     it("should return project if found", async () => {
       // Мокируем результат запроса
-      const mockProject = { id: 1, user_id: 1, name: "Project 1" };
+      const mockProject = createMockProject({ id: 1, user_id: 1, name: "Project 1" });
       (mockPool.query as jest.Mock).mockResolvedValueOnce({ rows: [mockProject] });
 
       // Вызываем метод
@@ -223,7 +224,7 @@ const runningAllTests = process.env.BUN_TEST_PATTERN === undefined;
   describe("createProject", () => {
     it("should create and return a new project", async () => {
       // Мокируем результат запроса
-      const mockProject = { id: 1, user_id: 1, name: "New Project" };
+      const mockProject = createMockProject({ id: 1, user_id: 1, name: "New Project" });
       (mockPool.query as jest.Mock).mockResolvedValueOnce({ rows: [mockProject] });
 
       // Вызываем метод
@@ -244,8 +245,8 @@ const runningAllTests = process.env.BUN_TEST_PATTERN === undefined;
     it("should return active competitors for a project", async () => {
       // Мокируем результат запроса
       const mockCompetitors = [
-        { id: 1, project_id: 1, username: "competitor1", is_active: true },
-        { id: 2, project_id: 1, username: "competitor2", is_active: true }
+        createMockCompetitor({ id: 1, project_id: 1, username: "competitor1", is_active: true }),
+        createMockCompetitor({ id: 2, project_id: 1, username: "competitor2", is_active: true })
       ];
       (mockPool.query as jest.Mock).mockResolvedValueOnce({ rows: mockCompetitors });
 
@@ -265,8 +266,8 @@ const runningAllTests = process.env.BUN_TEST_PATTERN === undefined;
     it("should return all competitors for a project when activeOnly is false", async () => {
       // Мокируем результат запроса
       const mockCompetitors = [
-        { id: 1, project_id: 1, username: "competitor1", is_active: true },
-        { id: 2, project_id: 1, username: "competitor2", is_active: false }
+        createMockCompetitor({ id: 1, project_id: 1, username: "competitor1", is_active: true }),
+        createMockCompetitor({ id: 2, project_id: 1, username: "competitor2", is_active: false })
       ];
       (mockPool.query as jest.Mock).mockResolvedValueOnce({ rows: mockCompetitors });
 
@@ -297,12 +298,12 @@ const runningAllTests = process.env.BUN_TEST_PATTERN === undefined;
   describe("addCompetitorAccount", () => {
     it("should add and return a new competitor", async () => {
       // Мокируем результат запроса
-      const mockCompetitor = {
+      const mockCompetitor = createMockCompetitor({
         id: 1,
         project_id: 1,
         username: "competitor1",
         instagram_url: "https://instagram.com/competitor1"
-      };
+      });
       (mockPool.query as jest.Mock).mockResolvedValueOnce({ rows: [mockCompetitor] });
 
       // Вызываем метод
@@ -383,8 +384,8 @@ const runningAllTests = process.env.BUN_TEST_PATTERN === undefined;
     it("should return hashtags for a project", async () => {
       // Мокируем результат запроса
       const mockHashtags = [
-        { id: 1, project_id: 1, hashtag: "hashtag1" },
-        { id: 2, project_id: 1, hashtag: "hashtag2" }
+        createMockHashtag({ id: 1, project_id: 1, hashtag: "hashtag1" }),
+        createMockHashtag({ id: 2, project_id: 1, hashtag: "hashtag2" })
       ];
       (mockPool.query as jest.Mock).mockResolvedValueOnce({ rows: mockHashtags });
 
@@ -416,7 +417,7 @@ const runningAllTests = process.env.BUN_TEST_PATTERN === undefined;
   describe("addHashtag", () => {
     it("should add and return a new hashtag", async () => {
       // Мокируем результат запроса
-      const mockHashtag = { id: 1, project_id: 1, hashtag: "hashtag1" };
+      const mockHashtag = createMockHashtag({ id: 1, project_id: 1, hashtag: "hashtag1" });
       (mockPool.query as jest.Mock).mockResolvedValueOnce({ rows: [mockHashtag] });
 
       // Вызываем метод
@@ -514,20 +515,26 @@ const runningAllTests = process.env.BUN_TEST_PATTERN === undefined;
 
       // Создаем тестовые данные
       const reels = [
-        {
-          competitorId: 1,
-          reelId: "reel1",
-          contentUrl: "https://example.com/reel1",
-          description: "Reel 1 description",
-          createdAt: "2023-01-01"
-        },
-        {
-          competitorId: 1,
-          reelId: "reel2",
-          contentUrl: "https://example.com/reel2",
-          description: "Reel 2 description",
-          createdAt: "2023-01-02"
-        }
+        createMockReelContent({
+          id: 1,
+          project_id: 1,
+          source_type: "competitor",
+          source_id: "1",
+          instagram_id: "reel1",
+          url: "https://example.com/reel1",
+          caption: "Reel 1 description",
+          published_at: "2023-01-01T00:00:00Z"
+        }),
+        createMockReelContent({
+          id: 2,
+          project_id: 1,
+          source_type: "competitor",
+          source_id: "1",
+          instagram_id: "reel2",
+          url: "https://example.com/reel2",
+          caption: "Reel 2 description",
+          published_at: "2023-01-02T00:00:00Z"
+        })
       ];
 
       // Вызываем метод
@@ -543,14 +550,14 @@ const runningAllTests = process.env.BUN_TEST_PATTERN === undefined;
       expect(mockPool.query).toHaveBeenNthCalledWith(
         1,
         "INSERT INTO reels_content (competitor_id, reel_id, content_url, description, created_at) VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING",
-        [1, "reel1", "https://example.com/reel1", "Reel 1 description", "2023-01-01"]
+        [1, "reel1", "https://example.com/reel1", "Reel 1 description", "2023-01-01T00:00:00Z"]
       );
 
       // Проверяем, что второй запрос был вызван с правильными параметрами
       expect(mockPool.query).toHaveBeenNthCalledWith(
         2,
         "INSERT INTO reels_content (competitor_id, reel_id, content_url, description, created_at) VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING",
-        [1, "reel2", "https://example.com/reel2", "Reel 2 description", "2023-01-02"]
+        [1, "reel2", "https://example.com/reel2", "Reel 2 description", "2023-01-02T00:00:00Z"]
       );
     });
   });
@@ -559,8 +566,8 @@ const runningAllTests = process.env.BUN_TEST_PATTERN === undefined;
     it("should return all reels with no filter", async () => {
       // Мокируем результат запроса
       const mockReels = [
-        { id: 1, competitor_id: 1, content_url: "https://example.com/reel1" },
-        { id: 2, competitor_id: 2, content_url: "https://example.com/reel2" }
+        createMockReelContent({ id: 1, source_id: "1", source_type: "competitor" }),
+        createMockReelContent({ id: 2, source_id: "2", source_type: "competitor" })
       ];
       (mockPool.query as jest.Mock).mockResolvedValueOnce({ rows: mockReels });
 
@@ -580,7 +587,7 @@ const runningAllTests = process.env.BUN_TEST_PATTERN === undefined;
     it("should return reels with filter", async () => {
       // Мокируем результат запроса
       const mockReels = [
-        { id: 1, competitor_id: 1, content_url: "https://example.com/reel1" }
+        createMockReelContent({ id: 1, source_id: "1", source_type: "competitor" })
       ];
       (mockPool.query as jest.Mock).mockResolvedValueOnce({ rows: mockReels });
 
@@ -606,25 +613,26 @@ const runningAllTests = process.env.BUN_TEST_PATTERN === undefined;
   describe("logParsingRun", () => {
     it("should log a parsing run and return the log", async () => {
       // Мокируем результат запроса
-      const mockLog = {
+      const mockLog = createMockParsingRunLog({
         id: 1,
         run_id: "run1",
         source_type: "competitor",
         source_id: "1",
-        status: "success",
+        status: "completed",
         error_message: null,
         started_at: "2023-01-01T00:00:00Z"
-      };
+      });
       (mockPool.query as jest.Mock).mockResolvedValueOnce({ rows: [mockLog] });
 
       // Мокируем generateUUID
-      jest.spyOn(adapter as any, 'generateUUID').mockReturnValue("run1");
+      (adapter as any).generateUUID = jest.fn().mockReturnValue("run1");
 
       // Вызываем метод
       const log = {
-        source_type: "competitor",
+        project_id: 1,
+        source_type: "competitor" as const,
         source_id: "1",
-        status: "success",
+        status: "completed" as const,
         started_at: "2023-01-01T00:00:00Z"
       };
       const result = await adapter.logParsingRun(log);
@@ -635,7 +643,7 @@ const runningAllTests = process.env.BUN_TEST_PATTERN === undefined;
       // Проверяем, что запрос был вызван с правильными параметрами
       expect(mockPool.query).toHaveBeenCalledWith(
         "INSERT INTO parsing_run_logs (run_id, target_type, target_id, status, message, created_at) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *",
-        ["run1", "competitor", "1", "success", null, "2023-01-01T00:00:00Z"]
+        ["run1", "competitor", "1", "completed", null, "2023-01-01T00:00:00Z"]
       );
     });
   });
@@ -644,24 +652,24 @@ const runningAllTests = process.env.BUN_TEST_PATTERN === undefined;
     it("should return parsing run logs for a target", async () => {
       // Мокируем результат запроса
       const mockLogs = [
-        {
+        createMockParsingRunLog({
           id: 1,
           run_id: "run1",
-          target_type: "competitor",
-          target_id: "1",
-          status: "success",
+          source_type: "competitor",
+          source_id: "1",
+          status: "completed",
           error_message: null,
-          created_at: "2023-01-01T00:00:00Z"
-        },
-        {
+          started_at: "2023-01-01T00:00:00Z"
+        }),
+        createMockParsingRunLog({
           id: 2,
           run_id: "run2",
-          target_type: "competitor",
-          target_id: "1",
-          status: "error",
+          source_type: "competitor",
+          source_id: "1",
+          status: "failed",
           error_message: "Error message",
-          created_at: "2023-01-02T00:00:00Z"
-        }
+          started_at: "2023-01-02T00:00:00Z"
+        })
       ];
       (mockPool.query as jest.Mock).mockResolvedValueOnce({ rows: mockLogs });
 
