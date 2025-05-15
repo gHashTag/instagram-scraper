@@ -4,195 +4,41 @@ import {
   expect,
   beforeEach,
   mock,
-  jest,
 } from "bun:test";
-import { Telegraf } from "telegraf";
-import { setupInstagramScraperBot } from "../../..";
-import { Update, UserFromGetMe } from "telegraf/types";
-import type {
-  ScraperBotContext,
-  InstagramScraperBotConfig,
-  StorageAdapter,
-} from "../../types";
-import { NeonAdapter } from "../../adapters/neon-adapter";
-import { 
-  User, 
-  UserSchema, 
-  Project, 
-  ProjectSchema,
-  Competitor,
-  CompetitorSchema
-} from "../../schemas";
+import { Update } from "telegraf/types";
+import {
+  setupE2ETestEnvironment,
+  USER_ID_FOR_TESTING,
+  CHAT_ID_FOR_TESTING
+} from "../helpers/e2e-setup";
 
-// Определяем тип SpyInstance для использования в тестах
-type SpyInstance<T extends any[] = any[], R = any> = {
-  mock: {
-    calls: T[][];
-    results: { type: string; value: R }[];
-    instances: any[];
-    invocationCallOrder: number[];
-    lastCall: T[];
-    clear: () => void;
+// Мокируем модуль neon-adapter для тестов
+mock.module("../../adapters/neon-adapter", () => {
+  return {
+    NeonAdapter: mock.fn().mockImplementation(() => ({
+      initialize: mock.fn().mockResolvedValue(undefined),
+      close: mock.fn().mockResolvedValue(undefined),
+      getUserByTelegramId: mock.fn(),
+      getProjectById: mock.fn(),
+      getProjectsByUserId: mock.fn(),
+      createProject: mock.fn(),
+      getHashtagsByProjectId: mock.fn(),
+      addHashtag: mock.fn(),
+      removeHashtag: mock.fn(),
+      getCompetitorAccounts: mock.fn(),
+      addCompetitorAccount: mock.fn(),
+      deleteCompetitorAccount: mock.fn(),
+      findUserByTelegramIdOrCreate: mock.fn(),
+    })),
   };
-};
-
-// --- Определяем константы и моки здесь ---
-const USER_ID_FOR_TESTING = 123456789;
-const mockUser: User = {
-  id: 1, // Внутренний ID пользователя в БД
-  telegram_id: USER_ID_FOR_TESTING, // ID, с которым пользователь приходит в Update
-  username: "testuser",
-  created_at: new Date().toISOString(),
-  is_active: true,
-};
-
-// Валидируем mockUser с помощью Zod
-const validatedUser = UserSchema.parse(mockUser);
-
-const mockProject: Project = {
-  id: 1,
-  user_id: 1,
-  name: "Test Project",
-  created_at: new Date().toISOString(),
-  is_active: true,
-};
-
-// Валидируем mockProject с помощью Zod
-const validatedProject = ProjectSchema.parse(mockProject);
-
-const mockCompetitors: Competitor[] = [
-  {
-    id: 1,
-    project_id: 1,
-    username: "competitor1",
-    instagram_url: "https://instagram.com/competitor1",
-    created_at: new Date().toISOString(),
-    is_active: true,
-  },
-  {
-    id: 2,
-    project_id: 1,
-    username: "competitor2",
-    instagram_url: "https://instagram.com/competitor2",
-    created_at: new Date().toISOString(),
-    is_active: true,
-  },
-];
-
-// Валидируем mockCompetitors с помощью Zod
-const validatedCompetitors = mockCompetitors.map(competitor => CompetitorSchema.parse(competitor));
+});
 
 describe.skip("E2E: Competitor Management", () => {
-  let bot: Telegraf<ScraperBotContext>;
-  let mockAdapterInstance: StorageAdapter & {
-    [key: string]: jest.Mock | SpyInstance<any[], any>;
-  };
-  let mockSendMessage: jest.Mock;
-  let mockEditMessageText: jest.Mock;
-  let mockAnswerCbQuery: jest.Mock;
-  let mockGetMe: jest.Mock;
+  let testEnv: ReturnType<typeof setupE2ETestEnvironment>;
 
-  const mockChatId = 12345;
-  const mockUserIdFromUpdate = USER_ID_FOR_TESTING;
-
-  const mockConfig: InstagramScraperBotConfig = {
-    telegramBotToken: "test-e2e-bot-token",
-    apifyClientToken: "test-token",
-  };
-
-  const mockBotInfo: UserFromGetMe = {
-    id: 987654321, // ID бота
-    is_bot: true,
-    first_name: "TestE2EBot",
-    username: "TestE2EBot_username",
-    can_join_groups: true,
-    can_read_all_group_messages: false,
-    supports_inline_queries: false,
-  };
-
-  beforeEach(async () => {
-    mockGetMe = jest.fn().mockResolvedValue(mockBotInfo);
-
-    bot = new Telegraf<ScraperBotContext>("test-bot-token");
-    bot.telegram.getMe = mockGetMe;
-
-    // Инициализируем сессию для бота
-    bot.use((ctx: any, next) => {
-      ctx.session = {};
-      ctx.scene = {
-        enter: jest.fn(),
-        leave: jest.fn(),
-        reenter: jest.fn(),
-        session: {}
-      };
-      return next();
-    });
-
-    mockAdapterInstance = new (NeonAdapter as any)() as StorageAdapter & {
-      [key: string]: jest.Mock | SpyInstance<any[], any>;
-    };
-
-    // Очистка моков перед каждым тестом
-    Object.values(mockAdapterInstance).forEach((mockFn) => {
-      if (typeof mockFn === "function" && mockFn.mock) {
-        mockFn.mockClear();
-      }
-    });
-
-    // Настройка поведения моков адаптера по умолчанию
-    (mockAdapterInstance.initialize as jest.Mock).mockResolvedValue(undefined);
-    (mockAdapterInstance.close as jest.Mock).mockResolvedValue(undefined);
-    (mockAdapterInstance.findUserByTelegramIdOrCreate as jest.Mock).mockResolvedValue(validatedUser);
-    (mockAdapterInstance.getProjectById as jest.Mock).mockResolvedValue(validatedProject);
-    (mockAdapterInstance.getCompetitorAccounts as jest.Mock).mockResolvedValue(validatedCompetitors);
-    (mockAdapterInstance.addCompetitorAccount as jest.Mock).mockImplementation((projectId, username, instagramUrl) => {
-      const newCompetitor: Competitor = {
-        id: mockCompetitors.length + 1,
-        project_id: projectId,
-        username,
-        instagram_url: instagramUrl,
-        created_at: new Date().toISOString(),
-        is_active: true,
-      };
-      return Promise.resolve(CompetitorSchema.parse(newCompetitor));
-    });
-    (mockAdapterInstance.deleteCompetitorAccount as jest.Mock).mockImplementation((projectId, username) => {
-      return Promise.resolve(true);
-    });
-
-    // Настраиваем бота с мок-адаптером и конфигурацией
-    setupInstagramScraperBot(bot, mockAdapterInstance, mockConfig);
-
-    // Мокируем методы API Telegram
-    mockSendMessage = jest.fn().mockResolvedValue({
-      message_id: 100,
-      from: mockBotInfo,
-      chat: {
-        id: mockChatId,
-        type: 'private',
-        first_name: 'Test',
-        username: 'testuser'
-      },
-      date: Math.floor(Date.now() / 1000),
-      text: 'Mocked response'
-    });
-    mockEditMessageText = jest.fn().mockResolvedValue({
-      message_id: 100,
-      from: mockBotInfo,
-      chat: {
-        id: mockChatId,
-        type: 'private',
-        first_name: 'Test',
-        username: 'testuser'
-      },
-      date: Math.floor(Date.now() / 1000),
-      text: 'Mocked edited message'
-    });
-    mockAnswerCbQuery = jest.fn().mockResolvedValue(true);
-
-    bot.telegram.sendMessage = mockSendMessage;
-    bot.telegram.editMessageText = mockEditMessageText;
-    bot.telegram.answerCbQuery = mockAnswerCbQuery;
+  beforeEach(() => {
+    // Настраиваем тестовое окружение
+    testEnv = setupE2ETestEnvironment();
   });
 
   it("should enter competitor scene when /competitors command is sent", async () => {
@@ -203,13 +49,13 @@ describe.skip("E2E: Competitor Management", () => {
         message_id: 4,
         date: Math.floor(Date.now() / 1000),
         chat: {
-          id: mockChatId,
+          id: CHAT_ID_FOR_TESTING,
           type: 'private',
           first_name: 'Test',
           username: 'testuser'
         },
         from: {
-          id: mockUserIdFromUpdate,
+          id: USER_ID_FOR_TESTING,
           is_bot: false,
           first_name: 'Test',
           username: 'testuser'
@@ -226,35 +72,181 @@ describe.skip("E2E: Competitor Management", () => {
     };
 
     // Вызываем обработчик команды /competitors
-    await bot.handleUpdate(update);
+    await testEnv.bot.handleUpdate(update);
 
     // Проверяем, что был вызван метод scene.enter с правильным именем сцены
-    expect((bot.context as any).scene.enter).toHaveBeenCalledWith("instagram_scraper_competitors");
+    expect(testEnv.mockSceneEnter).toHaveBeenCalledWith("instagram_scraper_competitors");
   });
 
   it("should show competitor list when user has competitors", async () => {
-    // TODO: Implement test for showing competitor list
-    // This will involve:
-    // 1. Setting up the scene session with a project ID
-    // 2. Simulating entering the competitor scene
-    // 3. Verifying that getCompetitorAccounts was called with the correct project ID
-    // 4. Verifying that the competitor list is shown
+    // Устанавливаем сессию для имитации состояния сцены
+    testEnv.bot.context.scene.session = {
+      step: 'COMPETITOR_LIST',
+      currentProjectId: 1,
+      user: testEnv.mockUser
+    };
+
+    // Создаем объект Update для имитации входа в сцену конкурентов
+    const update: Update = {
+      update_id: 123460,
+      message: {
+        message_id: 5,
+        date: Math.floor(Date.now() / 1000),
+        chat: {
+          id: CHAT_ID_FOR_TESTING,
+          type: 'private',
+          first_name: 'Test',
+          username: 'testuser'
+        },
+        from: {
+          id: USER_ID_FOR_TESTING,
+          is_bot: false,
+          first_name: 'Test',
+          username: 'testuser'
+        },
+        text: '/competitors',
+        entities: [
+          {
+            offset: 0,
+            length: 12,
+            type: 'bot_command'
+          }
+        ]
+      }
+    };
+
+    // Вызываем обработчик команды /competitors
+    await testEnv.bot.handleUpdate(update);
+
+    // Проверяем, что был вызван метод getCompetitorAccounts с правильным ID проекта
+    expect(testEnv.mockStorage.getCompetitorAccounts).toHaveBeenCalledWith(1, true);
   });
 
   it("should allow adding a new competitor", async () => {
-    // TODO: Implement test for adding a new competitor
-    // This will involve:
-    // 1. Simulating a button click to add a competitor
-    // 2. Simulating text input for the competitor URL
-    // 3. Verifying that addCompetitorAccount was called with correct parameters
-    // 4. Verifying that the user is shown a success message
+    // Создаем объект Update для имитации нажатия на кнопку добавления конкурента
+    const callbackUpdate: Update = {
+      update_id: 123461,
+      callback_query: {
+        id: "123458",
+        from: {
+          id: USER_ID_FOR_TESTING,
+          is_bot: false,
+          first_name: "Test",
+          username: "testuser",
+        },
+        message: {
+          message_id: 6,
+          date: Math.floor(Date.now() / 1000),
+          chat: {
+            id: CHAT_ID_FOR_TESTING,
+            type: "private",
+            first_name: "Test",
+            username: "testuser",
+          },
+          text: "Список конкурентов",
+          entities: [],
+        },
+        chat_instance: "123456",
+        data: "add_competitor_1",
+      },
+    };
+
+    // Вызываем обработчик callback-запроса
+    await testEnv.bot.handleUpdate(callbackUpdate);
+
+    // Проверяем, что был вызван метод answerCbQuery
+    expect(testEnv.mockAnswerCbQuery).toHaveBeenCalledWith("123458");
+
+    // Проверяем, что было отправлено сообщение с запросом имени конкурента
+    expect(testEnv.mockSendMessage).toHaveBeenCalledWith(
+      CHAT_ID_FOR_TESTING,
+      expect.stringContaining("Введите имя аккаунта конкурента"),
+      expect.any(Object)
+    );
+
+    // Теперь имитируем ввод имени конкурента
+    const textUpdate: Update = {
+      update_id: 123462,
+      message: {
+        message_id: 7,
+        date: Math.floor(Date.now() / 1000),
+        chat: {
+          id: CHAT_ID_FOR_TESTING,
+          type: 'private',
+          first_name: 'Test',
+          username: 'testuser'
+        },
+        from: {
+          id: USER_ID_FOR_TESTING,
+          is_bot: false,
+          first_name: 'Test',
+          username: 'testuser'
+        },
+        text: 'competitor3'
+      }
+    };
+
+    // Устанавливаем сессию для имитации состояния сцены
+    testEnv.bot.context.scene.session = {
+      step: 'ADD_COMPETITOR',
+      currentProjectId: 1,
+      user: testEnv.mockUser
+    };
+
+    // Вызываем обработчик текстового сообщения
+    await testEnv.bot.handleUpdate(textUpdate);
+
+    // Проверяем, что был вызван метод addCompetitorAccount с правильными параметрами
+    expect(testEnv.mockStorage.addCompetitorAccount).toHaveBeenCalledWith(
+      1,
+      'competitor3',
+      'https://instagram.com/competitor3'
+    );
   });
 
   it("should allow deleting a competitor", async () => {
-    // TODO: Implement test for deleting a competitor
-    // This will involve:
-    // 1. Simulating a button click to delete a competitor
-    // 2. Verifying that deleteCompetitorAccount was called with correct parameters
-    // 3. Verifying that the user is shown a success message
+    // Создаем объект Update для имитации нажатия на кнопку удаления конкурента
+    const update: Update = {
+      update_id: 123463,
+      callback_query: {
+        id: "123459",
+        from: {
+          id: USER_ID_FOR_TESTING,
+          is_bot: false,
+          first_name: "Test",
+          username: "testuser",
+        },
+        message: {
+          message_id: 8,
+          date: Math.floor(Date.now() / 1000),
+          chat: {
+            id: CHAT_ID_FOR_TESTING,
+            type: "private",
+            first_name: "Test",
+            username: "testuser",
+          },
+          text: "Список конкурентов",
+          entities: [],
+        },
+        chat_instance: "123456",
+        data: "delete_competitor_1_competitor1",
+      },
+    };
+
+    // Устанавливаем сессию для имитации состояния сцены
+    testEnv.bot.context.scene.session = {
+      step: 'COMPETITOR_LIST',
+      currentProjectId: 1,
+      user: testEnv.mockUser
+    };
+
+    // Вызываем обработчик callback-запроса
+    await testEnv.bot.handleUpdate(update);
+
+    // Проверяем, что был вызван метод deleteCompetitorAccount с правильными параметрами
+    expect(testEnv.mockStorage.deleteCompetitorAccount).toHaveBeenCalledWith(1, "competitor1");
+
+    // Проверяем, что был вызван метод answerCbQuery
+    expect(testEnv.mockAnswerCbQuery).toHaveBeenCalledWith("123459");
   });
 });

@@ -4,175 +4,41 @@ import {
   expect,
   beforeEach,
   mock,
-  jest,
 } from "bun:test";
-import { Telegraf } from "telegraf";
-import { setupInstagramScraperBot } from "../../..";
-import { Update, UserFromGetMe } from "telegraf/types";
-import type {
-  ScraperBotContext,
-  InstagramScraperBotConfig,
-  StorageAdapter,
-} from "../../types";
-import { NeonAdapter } from "../../adapters/neon-adapter";
-import { 
-  User, 
-  UserSchema, 
-  Project, 
-  ProjectSchema 
-} from "../../schemas";
+import { Update } from "telegraf/types";
+import {
+  setupE2ETestEnvironment,
+  USER_ID_FOR_TESTING,
+  CHAT_ID_FOR_TESTING
+} from "../helpers/e2e-setup";
 
-// Определяем тип SpyInstance для использования в тестах
-type SpyInstance<T extends any[] = any[], R = any> = {
-  mock: {
-    calls: T[][];
-    results: { type: string; value: R }[];
-    instances: any[];
-    invocationCallOrder: number[];
-    lastCall: T[];
-    clear: () => void;
+// Мокируем модуль neon-adapter для тестов
+mock.module("../../adapters/neon-adapter", () => {
+  return {
+    NeonAdapter: mock.fn().mockImplementation(() => ({
+      initialize: mock.fn().mockResolvedValue(undefined),
+      close: mock.fn().mockResolvedValue(undefined),
+      getUserByTelegramId: mock.fn(),
+      getProjectById: mock.fn(),
+      getProjectsByUserId: mock.fn(),
+      createProject: mock.fn(),
+      getHashtagsByProjectId: mock.fn(),
+      addHashtag: mock.fn(),
+      removeHashtag: mock.fn(),
+      getCompetitorAccounts: mock.fn(),
+      addCompetitorAccount: mock.fn(),
+      deleteCompetitorAccount: mock.fn(),
+      findUserByTelegramIdOrCreate: mock.fn(),
+    })),
   };
-};
-
-// --- Определяем константы и моки здесь ---
-const USER_ID_FOR_TESTING = 123456789;
-const mockUser: User = {
-  id: 1, // Внутренний ID пользователя в БД
-  telegram_id: USER_ID_FOR_TESTING, // ID, с которым пользователь приходит в Update
-  username: "testuser",
-  created_at: new Date().toISOString(),
-  is_active: true,
-};
-
-// Валидируем mockUser с помощью Zod
-const validatedUser = UserSchema.parse(mockUser);
-
-const mockProjects: Project[] = [
-  {
-    id: 1,
-    user_id: 1,
-    name: "Test Project 1",
-    created_at: new Date().toISOString(),
-    is_active: true,
-  },
-  {
-    id: 2,
-    user_id: 1,
-    name: "Test Project 2",
-    created_at: new Date().toISOString(),
-    is_active: true,
-  },
-];
-
-// Валидируем mockProjects с помощью Zod
-const validatedProjects = mockProjects.map(project => ProjectSchema.parse(project));
+});
 
 describe.skip("E2E: Project Management", () => {
-  let bot: Telegraf<ScraperBotContext>;
-  let mockAdapterInstance: StorageAdapter & {
-    [key: string]: jest.Mock | SpyInstance<any[], any>;
-  };
-  let mockSendMessage: jest.Mock;
-  let mockEditMessageText: jest.Mock;
-  let mockAnswerCbQuery: jest.Mock;
-  let mockGetMe: jest.Mock;
+  let testEnv: ReturnType<typeof setupE2ETestEnvironment>;
 
-  const mockChatId = 12345;
-  const mockUserIdFromUpdate = USER_ID_FOR_TESTING;
-
-  const mockConfig: InstagramScraperBotConfig = {
-    telegramBotToken: "test-e2e-bot-token",
-    apifyClientToken: "test-token",
-  };
-
-  const mockBotInfo: UserFromGetMe = {
-    id: 987654321, // ID бота
-    is_bot: true,
-    first_name: "TestE2EBot",
-    username: "TestE2EBot_username",
-    can_join_groups: true,
-    can_read_all_group_messages: false,
-    supports_inline_queries: false,
-  };
-
-  beforeEach(async () => {
-    mockGetMe = jest.fn().mockResolvedValue(mockBotInfo);
-
-    bot = new Telegraf<ScraperBotContext>("test-bot-token");
-    bot.telegram.getMe = mockGetMe;
-
-    // Инициализируем сессию для бота
-    bot.use((ctx: any, next) => {
-      ctx.session = {};
-      ctx.scene = {
-        enter: jest.fn(),
-        leave: jest.fn(),
-        reenter: jest.fn(),
-        session: {}
-      };
-      return next();
-    });
-
-    mockAdapterInstance = new (NeonAdapter as any)() as StorageAdapter & {
-      [key: string]: jest.Mock | SpyInstance<any[], any>;
-    };
-
-    // Очистка моков перед каждым тестом
-    Object.values(mockAdapterInstance).forEach((mockFn) => {
-      if (typeof mockFn === "function" && mockFn.mock) {
-        mockFn.mockClear();
-      }
-    });
-
-    // Настройка поведения моков адаптера по умолчанию
-    (mockAdapterInstance.initialize as jest.Mock).mockResolvedValue(undefined);
-    (mockAdapterInstance.close as jest.Mock).mockResolvedValue(undefined);
-    (mockAdapterInstance.findUserByTelegramIdOrCreate as jest.Mock).mockResolvedValue(validatedUser);
-    (mockAdapterInstance.getProjectsByUserId as jest.Mock).mockResolvedValue(validatedProjects);
-    (mockAdapterInstance.createProject as jest.Mock).mockImplementation((userId, name) => {
-      const newProject: Project = {
-        id: mockProjects.length + 1,
-        user_id: userId,
-        name,
-        created_at: new Date().toISOString(),
-        is_active: true,
-      };
-      return Promise.resolve(ProjectSchema.parse(newProject));
-    });
-
-    // Настраиваем бота с мок-адаптером и конфигурацией
-    setupInstagramScraperBot(bot, mockAdapterInstance, mockConfig);
-
-    // Мокируем методы API Telegram
-    mockSendMessage = jest.fn().mockResolvedValue({
-      message_id: 100,
-      from: mockBotInfo,
-      chat: {
-        id: mockChatId,
-        type: 'private',
-        first_name: 'Test',
-        username: 'testuser'
-      },
-      date: Math.floor(Date.now() / 1000),
-      text: 'Mocked response'
-    });
-    mockEditMessageText = jest.fn().mockResolvedValue({
-      message_id: 100,
-      from: mockBotInfo,
-      chat: {
-        id: mockChatId,
-        type: 'private',
-        first_name: 'Test',
-        username: 'testuser'
-      },
-      date: Math.floor(Date.now() / 1000),
-      text: 'Mocked edited message'
-    });
-    mockAnswerCbQuery = jest.fn().mockResolvedValue(true);
-
-    bot.telegram.sendMessage = mockSendMessage;
-    bot.telegram.editMessageText = mockEditMessageText;
-    bot.telegram.answerCbQuery = mockAnswerCbQuery;
+  beforeEach(() => {
+    // Настраиваем тестовое окружение
+    testEnv = setupE2ETestEnvironment();
   });
 
   it("should show project list when user has projects", async () => {
@@ -183,13 +49,13 @@ describe.skip("E2E: Project Management", () => {
         message_id: 2,
         date: Math.floor(Date.now() / 1000),
         chat: {
-          id: mockChatId,
+          id: CHAT_ID_FOR_TESTING,
           type: 'private',
           first_name: 'Test',
           username: 'testuser'
         },
         from: {
-          id: mockUserIdFromUpdate,
+          id: USER_ID_FOR_TESTING,
           is_bot: false,
           first_name: 'Test',
           username: 'testuser'
@@ -206,29 +72,143 @@ describe.skip("E2E: Project Management", () => {
     };
 
     // Вызываем обработчик команды /projects
-    await bot.handleUpdate(update);
+    await testEnv.bot.handleUpdate(update);
 
     // Проверяем, что был вызван метод scene.enter с правильным именем сцены
-    expect((bot.context as any).scene.enter).toHaveBeenCalledWith("instagram_scraper_projects");
+    expect(testEnv.mockSceneEnter).toHaveBeenCalledWith("instagram_scraper_projects");
     
-    // Проверяем, что был вызван метод getProjectsByUserId
-    expect(mockAdapterInstance.findUserByTelegramIdOrCreate).toHaveBeenCalledWith(mockUserIdFromUpdate, "testuser", "Test", undefined);
+    // Проверяем, что был вызван метод findUserByTelegramIdOrCreate
+    expect(testEnv.mockStorage.findUserByTelegramIdOrCreate).toHaveBeenCalledWith(
+      USER_ID_FOR_TESTING, 
+      "testuser", 
+      "Test", 
+      undefined
+    );
   });
 
   it("should allow creating a new project", async () => {
-    // TODO: Implement test for creating a new project
-    // This will involve:
-    // 1. Simulating a button click to create a project
-    // 2. Simulating text input for the project name
-    // 3. Verifying that createProject was called with correct parameters
-    // 4. Verifying that the user is shown a success message
+    // Создаем объект Update для имитации нажатия на кнопку создания проекта
+    const callbackUpdate: Update = {
+      update_id: 123458,
+      callback_query: {
+        id: "123457",
+        from: {
+          id: USER_ID_FOR_TESTING,
+          is_bot: false,
+          first_name: "Test",
+          username: "testuser",
+        },
+        message: {
+          message_id: 3,
+          date: Math.floor(Date.now() / 1000),
+          chat: {
+            id: CHAT_ID_FOR_TESTING,
+            type: "private",
+            first_name: "Test",
+            username: "testuser",
+          },
+          text: "У вас нет проектов",
+          entities: [],
+        },
+        chat_instance: "123456",
+        data: "create_project",
+      },
+    };
+
+    // Вызываем обработчик callback-запроса
+    await testEnv.bot.handleUpdate(callbackUpdate);
+
+    // Проверяем, что был вызван метод answerCbQuery
+    expect(testEnv.mockAnswerCbQuery).toHaveBeenCalledWith("123457");
+
+    // Проверяем, что было отправлено сообщение с запросом названия проекта
+    expect(testEnv.mockSendMessage).toHaveBeenCalledWith(
+      CHAT_ID_FOR_TESTING,
+      expect.stringContaining("Введите название проекта"),
+      expect.any(Object)
+    );
+
+    // Теперь имитируем ввод названия проекта
+    const textUpdate: Update = {
+      update_id: 123459,
+      message: {
+        message_id: 4,
+        date: Math.floor(Date.now() / 1000),
+        chat: {
+          id: CHAT_ID_FOR_TESTING,
+          type: 'private',
+          first_name: 'Test',
+          username: 'testuser'
+        },
+        from: {
+          id: USER_ID_FOR_TESTING,
+          is_bot: false,
+          first_name: 'Test',
+          username: 'testuser'
+        },
+        text: 'Новый проект'
+      }
+    };
+
+    // Устанавливаем сессию для имитации состояния сцены
+    testEnv.bot.context.scene.session = {
+      step: 'CREATE_PROJECT',
+      user: testEnv.mockUser
+    };
+
+    // Вызываем обработчик текстового сообщения
+    await testEnv.bot.handleUpdate(textUpdate);
+
+    // Проверяем, что был вызван метод createProject с правильными параметрами
+    expect(testEnv.mockStorage.createProject).toHaveBeenCalledWith(
+      testEnv.mockUser.id,
+      'Новый проект'
+    );
   });
 
   it("should show project menu when selecting a project", async () => {
-    // TODO: Implement test for selecting a project
-    // This will involve:
-    // 1. Simulating a button click to select a project
-    // 2. Verifying that the project menu is shown
-    // 3. Verifying that the session data is updated correctly
+    // Создаем объект Update для имитации нажатия на кнопку выбора проекта
+    const update: Update = {
+      update_id: 123457,
+      callback_query: {
+        id: "123456",
+        from: {
+          id: USER_ID_FOR_TESTING,
+          is_bot: false,
+          first_name: "Test",
+          username: "testuser",
+        },
+        message: {
+          message_id: 2,
+          date: Math.floor(Date.now() / 1000),
+          chat: {
+            id: CHAT_ID_FOR_TESTING,
+            type: "private",
+            first_name: "Test",
+            username: "testuser",
+          },
+          text: "Ваши проекты:",
+          entities: [],
+        },
+        chat_instance: "123456",
+        data: "project_1",
+      },
+    };
+
+    // Вызываем обработчик callback-запроса
+    await testEnv.bot.handleUpdate(update);
+
+    // Проверяем, что был вызван метод getProjectById с правильным ID проекта
+    expect(testEnv.mockStorage.getProjectById).toHaveBeenCalledWith(1);
+
+    // Проверяем, что был вызван метод answerCbQuery
+    expect(testEnv.mockAnswerCbQuery).toHaveBeenCalledWith("123456");
+
+    // Проверяем, что было отправлено сообщение с меню проекта
+    expect(testEnv.mockSendMessage).toHaveBeenCalledWith(
+      CHAT_ID_FOR_TESTING,
+      expect.stringContaining(testEnv.mockProjects[0].name),
+      expect.any(Object)
+    );
   });
 });
