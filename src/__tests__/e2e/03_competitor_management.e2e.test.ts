@@ -4,6 +4,7 @@ import {
   expect,
   beforeEach,
   mock,
+  jest,
 } from "bun:test";
 import { Update } from "telegraf/types";
 import {
@@ -15,20 +16,20 @@ import {
 // Мокируем модуль neon-adapter для тестов
 mock.module("../../adapters/neon-adapter", () => {
   return {
-    NeonAdapter: mock.fn().mockImplementation(() => ({
-      initialize: mock.fn().mockResolvedValue(undefined),
-      close: mock.fn().mockResolvedValue(undefined),
-      getUserByTelegramId: mock.fn(),
-      getProjectById: mock.fn(),
-      getProjectsByUserId: mock.fn(),
-      createProject: mock.fn(),
-      getHashtagsByProjectId: mock.fn(),
-      addHashtag: mock.fn(),
-      removeHashtag: mock.fn(),
-      getCompetitorAccounts: mock.fn(),
-      addCompetitorAccount: mock.fn(),
-      deleteCompetitorAccount: mock.fn(),
-      findUserByTelegramIdOrCreate: mock.fn(),
+    NeonAdapter: jest.fn().mockImplementation(() => ({
+      initialize: jest.fn().mockResolvedValue(undefined),
+      close: jest.fn().mockResolvedValue(undefined),
+      getUserByTelegramId: jest.fn(),
+      getProjectById: jest.fn(),
+      getProjectsByUserId: jest.fn(),
+      createProject: jest.fn(),
+      getHashtagsByProjectId: jest.fn(),
+      addHashtag: jest.fn(),
+      removeHashtag: jest.fn(),
+      getCompetitorAccounts: jest.fn(),
+      addCompetitorAccount: jest.fn(),
+      deleteCompetitorAccount: jest.fn(),
+      findUserByTelegramIdOrCreate: jest.fn(),
     })),
   };
 });
