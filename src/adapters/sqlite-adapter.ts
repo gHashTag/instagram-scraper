@@ -91,13 +91,15 @@ export class SqliteAdapter implements StorageAdapter {
   }
 
   /**
-   * Проверяет подключение к базе данных и выдает ошибку, если нет подключения
+   * Проверяет подключение к базе данных и возвращает экземпляр базы данных
+   * @returns Экземпляр базы данных SQLite
    */
   private ensureConnection(): sqlite.Database {
     if (!this.db) {
-      throw new Error(
-        "Нет подключения к SQLite базе данных. Вызовите initialize() перед использованием адаптера."
-      );
+      // console.log("Creating new SQLite connection for ensureConnection");
+      this.db = new sqlite(this.dbPath);
+      this.db.exec("PRAGMA journal_mode = WAL;"); // Recommended for concurrent access
+      this.db.exec("PRAGMA foreign_keys = ON;");
     }
     return this.db;
   }
@@ -515,33 +517,60 @@ export class SqliteAdapter implements StorageAdapter {
     }
   }
 
-  async createUser(telegramId: number, username?: string): Promise<User> {
+  async createUser(
+    telegramId: number,
+    username?: string,
+    firstName?: string,
+    lastName?: string
+  ): Promise<User> {
     const db = this.ensureConnection();
     try {
       const query = db.prepare(
-        "INSERT INTO Users (telegram_id, username) VALUES (?, ?)"
+        "INSERT INTO Users (telegram_id, username, created_at, is_active, first_name, last_name)" +
+          " VALUES (?, ?, datetime('now'), 1, ?, ?)"
       );
-      const result = query.run(telegramId, username || null);
+      const result = query.run(
+        telegramId,
+        username || null,
+        firstName || null,
+        lastName || null
+      );
+
       if (result.lastInsertRowid) {
-        const newUserId = Number(result.lastInsertRowid);
-        // Нужен метод для получения пользователя по обычному ID, а не telegram_id
-        // Пока что вернем заглушку или попробуем найти по telegram_id
-        const newUser = await this.getUserByTelegramId(telegramId);
-        if (newUser) return newUser;
-        // Если не нашли, вернем хотя бы базовые данные
-        return {
-          id: newUserId,
-          telegram_id: telegramId,
-          username,
-          created_at: new Date().toISOString(),
-          is_active: true,
-        };
+        const createdUser = await this.getUserByTelegramId(telegramId);
+        if (createdUser) return createdUser;
       }
-      throw new Error("Не удалось создать пользователя");
+      throw new Error("Не удалось создать пользователя после вставки.");
     } catch (error) {
       console.error("Ошибка при создании пользователя в SQLite:", error);
       throw new Error(
         `Ошибка при создании пользователя: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
+  async findUserByTelegramIdOrCreate(
+    telegramId: number,
+    username?: string,
+    firstName?: string,
+    lastName?: string
+  ): Promise<User> {
+    const db = this.ensureConnection();
+    try {
+      let user = await this.getUserByTelegramId(telegramId);
+      if (user) {
+        // TODO: Опционально обновить username, firstName, lastName, если они изменились
+        return user;
+      }
+      // Если пользователь не найден, создаем нового
+      user = await this.createUser(telegramId, username, firstName, lastName);
+      return user;
+    } catch (error) {
+      console.error("Ошибка в findUserByTelegramIdOrCreate в SQLite:", error);
+      throw new Error(
+        `Ошибка при поиске или создании пользователя: ${
+          error instanceof Error ? error.message : String(error)
+        }`
       );
     }
   }
@@ -580,7 +609,7 @@ export class SqliteAdapter implements StorageAdapter {
     try {
       const query = db.prepare(`
         INSERT INTO ParsingRunLogs (
-          run_id, project_id, source_type, source_id, status, started_at, 
+          run_id, project_id, source_type, source_id, status, started_at,
           ended_at, reels_found_count, reels_added_count, errors_count, error_message
         )
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)

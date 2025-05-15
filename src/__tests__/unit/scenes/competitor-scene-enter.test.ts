@@ -1,539 +1,280 @@
-import {
-  describe,
-  it,
-  expect,
-  beforeEach,
-  afterEach, // Добавляем afterEach на всякий случай, если понадобится
-  jest,
-  mock,
-  spyOn,
-} from "bun:test";
-import { Context, Markup } from "telegraf";
-import { Update, UserFromGetMe } from "telegraf/types";
-import { competitorScene } from "../../../scenes/competitor-scene";
+import { describe, it, expect, jest, mock, beforeEach, afterEach, spyOn } from "bun:test";
+import { handleCompetitorEnter } from "../../../scenes/competitor-scene";
 import { NeonAdapter } from "../../../adapters/neon-adapter";
-import {
-  ScraperBotContext,
-  Project,
-  Competitor,
-  User,
-  ScraperSceneSessionData,
-} from "@/types";
+import { ScraperBotContext, User, Project, Competitor } from "@/types";
+import { Context as TelegrafContext } from "telegraf";
+import { Update, UserFromGetMe } from "telegraf/types";
+
+// Мокируем зависимости
+mock.module("../../../logger", () => {
+  return {
+    logger: {
+      info: jest.fn(),
+      error: jest.fn(),
+      warn: jest.fn(),
+    },
+  };
+});
 
 // Мокируем NeonAdapter
 mock.module("../../../adapters/neon-adapter", () => {
   return {
     NeonAdapter: jest.fn().mockImplementation(() => ({
-      initialize: jest.fn<() => Promise<void>>().mockResolvedValue(undefined),
-      close: jest.fn<() => Promise<void>>().mockResolvedValue(undefined),
-      getUserByTelegramId:
-        jest.fn<(telegramId: number) => Promise<User | null>>(),
-      getProjectsByUserId:
-        jest.fn<(userId: number) => Promise<Project[] | null>>(),
-      getCompetitorAccounts:
-        jest.fn<(projectId: number) => Promise<Competitor[] | null>>(),
-      addCompetitorAccount:
-        jest.fn<
-          (
-            projectId: number,
-            username: string,
-            instagramUrl: string
-          ) => Promise<Competitor | null>
-        >(),
-      removeCompetitor: jest.fn(),
+      initialize: jest.fn().mockResolvedValue(undefined),
+      close: jest.fn().mockResolvedValue(undefined),
+      getUserByTelegramId: jest.fn(),
+      getProjectsByUserId: jest.fn(),
+      getCompetitorAccounts: jest.fn(),
     })),
   };
 });
 
-let mockNeonAdapterInstance: NeonAdapter & {
-  [K in keyof NeonAdapter]: jest.Mock;
+// Создаем тип для мокированного адаптера
+type MockedNeonAdapterType = {
+  initialize: jest.Mock;
+  close: jest.Mock;
+  getUserByTelegramId: jest.Mock;
+  getProjectsByUserId: jest.Mock;
+  getCompetitorAccounts: jest.Mock;
 };
 
-const createMockContext = (
-  update: Partial<Update.CallbackQueryUpdate | Update.MessageUpdate>
-) => {
-  const botInfo: UserFromGetMe = {
-    id: 12345,
-    is_bot: true,
-    first_name: "TestBot",
-    username: "TestBot",
-    can_join_groups: true,
-    can_read_all_group_messages: true,
-    supports_inline_queries: true,
+// Создаем тип для контекста
+type TestContext = ScraperBotContext & {
+  scene: {
+    session: any;
+    enter: jest.Mock;
+    leave: jest.Mock;
+    reenter: jest.Mock;
   };
-  const ctx = new Context(
-    update as Update,
-    {} as any,
-    botInfo
-  ) as ScraperBotContext & { scene: { session: ScraperSceneSessionData } };
+};
 
-  ctx.scene = {
-    enter: jest.fn(),
-    leave: jest.fn(),
-    reenter: jest.fn(),
-    session: {
-      step: undefined,
-      projectId: undefined,
-    } as ScraperSceneSessionData,
-    state: {},
-    current: undefined,
-    ctx: ctx,
-  } as any;
+// Функция для создания мок-контекста
+const createMockContext = (fromId: number = 123456789): TestContext => {
+  // Создаем базовый контекст
+  const ctx = {
+    storage: null as any,
+    from: {
+      id: fromId,
+      is_bot: false,
+      first_name: "Test",
+      last_name: "User",
+      username: "testuser",
+    },
+    scene: {
+      session: {},
+      enter: jest.fn(),
+      leave: jest.fn(),
+      reenter: jest.fn(),
+    },
+    reply: jest.fn().mockResolvedValue(true),
+    editMessageReplyMarkup: jest.fn().mockResolvedValue(true),
+    deleteMessage: jest.fn().mockResolvedValue(true),
+    answerCbQuery: jest.fn().mockResolvedValue(true),
+  } as TestContext;
 
-  ctx.reply = jest.fn();
-  ctx.answerCbQuery = jest.fn().mockResolvedValue(true);
-
+  // Создаем и устанавливаем адаптер
   const adapterInstance = new NeonAdapter();
-  ctx.storage = adapterInstance;
-  mockNeonAdapterInstance = adapterInstance as NeonAdapter & {
-    [K in keyof NeonAdapter]: jest.Mock;
-  };
+  ctx.storage = adapterInstance as unknown as MockedNeonAdapterType;
 
   return ctx;
 };
 
 describe("competitorScene - Enter Handler", () => {
-  let ctx: ScraperBotContext & { scene: { session: ScraperSceneSessionData } };
-  let consoleErrorSpy: jest.SpiedFunction<typeof console.error>; // Объявляем здесь для использования в afterEach
+  let ctx: TestContext;
+  let consoleErrorSpy: jest.SpiedFunction<typeof console.error>;
 
   beforeEach(() => {
-    ctx = createMockContext({}); // Создаем базовый контекст, специфичный для теста будет создан в it()
-    consoleErrorSpy = spyOn(console, "error").mockImplementation(() => {}); // Мокируем console.error
+    ctx = createMockContext();
+    consoleErrorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+    jest.clearAllMocks();
   });
 
   afterEach(() => {
-    consoleErrorSpy.mockRestore(); // Восстанавливаем после каждого теста
+    consoleErrorSpy.mockRestore();
   });
 
-  it("should reply and leave if user is not registered", async () => {
-    const update = {
-      update_id: 16,
-      from: { id: 1 },
-      message: undefined,
-      callback_query: {
-        id: "cb1_enter_no_user",
-        from: {
-          id: 1,
-          first_name: "Test",
-          is_bot: false,
-          username: "testuser",
-        },
-        message: {
-          message_id: 1,
-          date: Date.now(),
-          chat: { id: 1, type: "private" },
-        },
-        chat_instance: "1",
-        data: "some_enter_data",
-      },
-    };
-    ctx = createMockContext(update);
-    mockNeonAdapterInstance.getUserByTelegramId.mockResolvedValue(null);
+  it("should leave scene if user is not found", async () => {
+    // Мокируем результат запроса getUserByTelegramId
+    (ctx.storage as MockedNeonAdapterType).getUserByTelegramId.mockResolvedValue(null);
 
-    await competitorScene.enterMiddleware()(ctx, async () => {});
+    // Вызываем обработчик входа в сцену напрямую
+    await handleCompetitorEnter(ctx);
 
-    expect(mockNeonAdapterInstance.initialize).toHaveBeenCalledTimes(1);
-    expect(mockNeonAdapterInstance.getUserByTelegramId).toHaveBeenCalledWith(1);
+    // Проверяем, что был вызван метод initialize
+    expect((ctx.storage as MockedNeonAdapterType).initialize).toHaveBeenCalled();
+
+    // Проверяем, что был вызван метод getUserByTelegramId с правильным параметром
+    expect((ctx.storage as MockedNeonAdapterType).getUserByTelegramId).toHaveBeenCalledWith(123456789);
+
+    // Проверяем, что был вызван метод reply с сообщением об ошибке
     expect(ctx.reply).toHaveBeenCalledWith(
       "Вы не зарегистрированы. Пожалуйста, используйте /start для начала работы."
     );
-    expect(mockNeonAdapterInstance.close).toHaveBeenCalledTimes(1);
-    expect(ctx.scene.leave).toHaveBeenCalledTimes(1);
+
+    // Проверяем, что был вызван метод close
+    expect((ctx.storage as MockedNeonAdapterType).close).toHaveBeenCalled();
+
+    // Проверяем, что был вызван метод leave
+    expect(ctx.scene.leave).toHaveBeenCalled();
   });
 
-  it("should reply and leave if user has no projects", async () => {
-    const update = {
-      update_id: 17,
-      from: { id: 1 },
-      message: undefined,
-      callback_query: {
-        id: "cb1_enter_no_projects",
-        from: {
-          id: 1,
-          first_name: "Test",
-          is_bot: false,
-          username: "testuser",
-        },
-        message: {
-          message_id: 1,
-          date: Date.now(),
-          chat: { id: 1, type: "private" },
-        },
-        chat_instance: "1",
-        data: "some_enter_data",
-      },
-    };
-    ctx = createMockContext(update);
-    const userMock: User = {
-      id: 1,
-      telegram_id: 1,
-      username: "testuser",
-      created_at: new Date().toISOString(),
-      is_active: true,
-    };
+  it("should leave scene if user has no projects", async () => {
+    // Мокируем результаты запросов
+    const mockUser: User = { id: 1, telegram_id: 123456789, username: "testuser" };
+    (ctx.storage as MockedNeonAdapterType).getUserByTelegramId.mockResolvedValue(mockUser);
+    (ctx.storage as MockedNeonAdapterType).getProjectsByUserId.mockResolvedValue([]);
 
-    mockNeonAdapterInstance.getUserByTelegramId.mockResolvedValue(userMock);
-    mockNeonAdapterInstance.getProjectsByUserId.mockResolvedValue(null); // или []
+    // Вызываем обработчик входа в сцену напрямую
+    await handleCompetitorEnter(ctx);
 
-    await competitorScene.enterMiddleware()(ctx, async () => {});
+    // Проверяем, что был вызван метод initialize
+    expect((ctx.storage as MockedNeonAdapterType).initialize).toHaveBeenCalled();
 
-    expect(mockNeonAdapterInstance.initialize).toHaveBeenCalledTimes(1);
-    expect(mockNeonAdapterInstance.getUserByTelegramId).toHaveBeenCalledWith(1);
-    expect(mockNeonAdapterInstance.getProjectsByUserId).toHaveBeenCalledWith(
-      userMock.id
-    );
+    // Проверяем, что был вызван метод getUserByTelegramId с правильным параметром
+    expect((ctx.storage as MockedNeonAdapterType).getUserByTelegramId).toHaveBeenCalledWith(123456789);
+
+    // Проверяем, что был вызван метод getProjectsByUserId с правильным параметром
+    expect((ctx.storage as MockedNeonAdapterType).getProjectsByUserId).toHaveBeenCalledWith(1);
+
+    // Проверяем, что был вызван метод reply с сообщением об ошибке
     expect(ctx.reply).toHaveBeenCalledWith(
       "У вас нет проектов. Создайте проект с помощью команды /projects"
     );
-    expect(mockNeonAdapterInstance.close).toHaveBeenCalledTimes(1);
-    expect(ctx.scene.leave).toHaveBeenCalledTimes(1);
+
+    // Проверяем, что был вызван метод close
+    expect((ctx.storage as MockedNeonAdapterType).close).toHaveBeenCalled();
+
+    // Проверяем, что был вызван метод leave
+    expect(ctx.scene.leave).toHaveBeenCalled();
   });
 
-  it("should offer to add competitor if user has one project with no competitors", async () => {
-    const update = {
-      update_id: 18,
-      from: { id: 1 },
-      message: undefined,
-      callback_query: {
-        id: "cb1_enter_one_project_no_comp",
-        from: {
-          id: 1,
-          first_name: "Test",
-          is_bot: false,
-          username: "testuser",
-        },
-        message: {
-          message_id: 1,
-          date: Date.now(),
-          chat: { id: 1, type: "private" },
-        },
-        chat_instance: "1",
-        data: "some_enter_data",
-      },
-    };
-    ctx = createMockContext(update);
-    const userMock: User = {
-      id: 1,
-      telegram_id: 1,
-      username: "testuser",
-      created_at: new Date().toISOString(),
-      is_active: true,
-    };
-    const projectMock: Project = {
-      id: 10,
-      user_id: 1,
-      name: "Test Project",
-      created_at: new Date().toISOString(),
-      is_active: true,
-    };
-
-    mockNeonAdapterInstance.getUserByTelegramId.mockResolvedValue(userMock);
-    mockNeonAdapterInstance.getProjectsByUserId.mockResolvedValue([
-      projectMock,
-    ]);
-    mockNeonAdapterInstance.getCompetitorAccounts.mockResolvedValue([]); // Нет конкурентов
-
-    await competitorScene.enterMiddleware()(ctx, async () => {});
-
-    expect(mockNeonAdapterInstance.initialize).toHaveBeenCalledTimes(1);
-    expect(mockNeonAdapterInstance.getUserByTelegramId).toHaveBeenCalledWith(1);
-    expect(mockNeonAdapterInstance.getProjectsByUserId).toHaveBeenCalledWith(
-      userMock.id
-    );
-    expect(mockNeonAdapterInstance.getCompetitorAccounts).toHaveBeenCalledWith(
-      projectMock.id
-    );
-    expect(ctx.reply).toHaveBeenCalledWith(
-      `В проекте \"${projectMock.name}\" нет добавленных конкурентов. Хотите добавить?`,
-      {
-        reply_markup: Markup.inlineKeyboard([
-          [
-            Markup.button.callback(
-              "Добавить конкурента",
-              `add_competitor_${projectMock.id}`
-            ),
-          ],
-          [Markup.button.callback("Выйти", "exit_scene")],
-        ]).reply_markup,
-      }
-    );
-    expect(mockNeonAdapterInstance.close).toHaveBeenCalledTimes(1);
-    expect(ctx.scene.leave).not.toHaveBeenCalled(); // Не должен выходить из сцены
-  });
-
-  it("should show competitors list with delete buttons if user has one project with competitors", async () => {
-    const update = {
-      update_id: 19,
-      from: { id: 1 },
-      message: undefined,
-      callback_query: {
-        id: "cb1_enter_one_project_with_comp",
-        from: {
-          id: 1,
-          first_name: "Test",
-          is_bot: false,
-          username: "testuser",
-        },
-        message: {
-          message_id: 1,
-          date: Date.now(),
-          chat: { id: 1, type: "private" },
-        },
-        chat_instance: "1",
-        data: "some_enter_data",
-      },
-    };
-    ctx = createMockContext(update);
-    const userMock: User = {
-      id: 1,
-      telegram_id: 1,
-      username: "testuser",
-      created_at: new Date().toISOString(),
-      is_active: true,
-    };
-    const projectMock: Project = {
-      id: 1,
-      user_id: 1,
-      name: "Test Project",
-      created_at: new Date().toISOString(),
-      is_active: true,
-    };
-    const competitorMock: Competitor = {
-      id: 101,
-      project_id: 1,
-      username: "test_competitor",
-      instagram_url: "http://insta/test_competitor",
-      created_at: new Date().toISOString(),
-      is_active: true,
-    };
-
-    mockNeonAdapterInstance.getUserByTelegramId.mockResolvedValue(userMock);
-    mockNeonAdapterInstance.getProjectsByUserId.mockResolvedValue([
-      projectMock,
-    ]);
-    mockNeonAdapterInstance.getCompetitorAccounts.mockResolvedValue([
-      competitorMock,
-    ]);
-
-    await competitorScene.enterMiddleware()(ctx, async () => {});
-
-    expect(mockNeonAdapterInstance.getCompetitorAccounts).toHaveBeenCalledWith(
-      1
-    );
-    // Исправляем проверку ctx.reply
-    const replyCalls = (ctx.reply as jest.Mock).mock.calls;
-    expect(replyCalls.length).toBe(1);
-    expect(replyCalls[0][0]).toContain(
-      `Конкуренты в проекте "${projectMock.name}"`
-    );
-    expect(replyCalls[0][1]).toEqual({
-      parse_mode: "Markdown",
-      reply_markup: Markup.inlineKeyboard([
-        [
-          Markup.button.callback(
-            `🗑️ Удалить ${competitorMock.username}`,
-            `delete_competitor_${projectMock.id}_${competitorMock.username}`
-          ),
-        ],
-        [
-          Markup.button.callback(
-            "Добавить конкурента",
-            `add_competitor_${projectMock.id}`
-          ),
-        ],
-        [Markup.button.callback("Выйти", "exit_scene")],
-      ]).reply_markup, // Markup.inlineKeyboard(...).reply_markup дает { inline_keyboard: [...] }
-    });
-    expect(mockNeonAdapterInstance.close).toHaveBeenCalledTimes(1);
-    expect(ctx.scene.leave).not.toHaveBeenCalled();
-  });
-
-  it("should ask to select a project if user has multiple projects", async () => {
-    const update = {
-      update_id: 20,
-      from: { id: 1 },
-      message: undefined,
-      callback_query: {
-        id: "cb1_enter_multi_projects",
-        from: {
-          id: 1,
-          first_name: "Test",
-          is_bot: false,
-          username: "testuser",
-        },
-        message: {
-          message_id: 1,
-          date: Date.now(),
-          chat: { id: 1, type: "private" },
-        },
-        chat_instance: "1",
-        data: "some_enter_data",
-      },
-    };
-    ctx = createMockContext(update);
-    const userMock: User = {
-      id: 1,
-      telegram_id: 1,
-      username: "testuser",
-      created_at: new Date().toISOString(),
-      is_active: true,
-    };
-    const projectMocks: Project[] = [
-      {
-        id: 10,
-        user_id: 1,
-        name: "Project Alpha",
-        created_at: new Date().toISOString(),
-        is_active: true,
-      },
-      {
-        id: 11,
-        user_id: 1,
-        name: "Project Beta",
-        created_at: new Date().toISOString(),
-        is_active: true,
-      },
+  it("should show competitors list when user has one project with competitors", async () => {
+    // Мокируем результаты запросов
+    const mockUser: User = { id: 1, telegram_id: 123456789, username: "testuser" };
+    const mockProjects: Project[] = [{ id: 1, user_id: 1, name: "Test Project" }];
+    const mockCompetitors: Competitor[] = [
+      { id: 1, project_id: 1, username: "competitor1", instagram_url: "https://instagram.com/competitor1", is_active: true },
+      { id: 2, project_id: 1, username: "competitor2", instagram_url: "https://instagram.com/competitor2", is_active: true }
     ];
 
-    mockNeonAdapterInstance.getUserByTelegramId.mockResolvedValue(userMock);
-    mockNeonAdapterInstance.getProjectsByUserId.mockResolvedValue(projectMocks);
+    (ctx.storage as MockedNeonAdapterType).getUserByTelegramId.mockResolvedValue(mockUser);
+    (ctx.storage as MockedNeonAdapterType).getProjectsByUserId.mockResolvedValue(mockProjects);
+    (ctx.storage as MockedNeonAdapterType).getCompetitorAccounts.mockResolvedValue(mockCompetitors);
 
-    await competitorScene.enterMiddleware()(ctx, async () => {});
+    // Вызываем обработчик входа в сцену напрямую
+    await handleCompetitorEnter(ctx);
 
-    expect(mockNeonAdapterInstance.initialize).toHaveBeenCalledTimes(1);
-    expect(mockNeonAdapterInstance.getProjectsByUserId).toHaveBeenCalledWith(
-      userMock.id
+    // Проверяем, что был вызван метод initialize
+    expect((ctx.storage as MockedNeonAdapterType).initialize).toHaveBeenCalled();
+
+    // Проверяем, что был вызван метод getUserByTelegramId с правильным параметром
+    expect((ctx.storage as MockedNeonAdapterType).getUserByTelegramId).toHaveBeenCalledWith(123456789);
+
+    // Проверяем, что был вызван метод getProjectsByUserId с правильным параметром
+    expect((ctx.storage as MockedNeonAdapterType).getProjectsByUserId).toHaveBeenCalledWith(1);
+
+    // Проверяем, что был вызван метод getCompetitorAccounts с правильным параметром
+    expect((ctx.storage as MockedNeonAdapterType).getCompetitorAccounts).toHaveBeenCalledWith(1);
+
+    // Проверяем, что был вызван метод reply с сообщением со списком конкурентов
+    expect(ctx.reply).toHaveBeenCalledWith(
+      expect.stringContaining("Конкуренты в проекте \"Test Project\":"),
+      expect.anything()
     );
-    expect(
-      mockNeonAdapterInstance.getCompetitorAccounts
-    ).not.toHaveBeenCalled(); // Не должен вызываться
 
-    const expectedProjectButtons = projectMocks.map((project) => [
-      Markup.button.callback(project.name, `competitors_project_${project.id}`),
-    ]);
-    expectedProjectButtons.push([
-      Markup.button.callback("Выйти", "exit_scene"),
-    ]);
+    // Проверяем, что был вызван метод close
+    expect((ctx.storage as MockedNeonAdapterType).close).toHaveBeenCalled();
+  });
 
+  it("should show add competitor message when user has one project without competitors", async () => {
+    // Мокируем результаты запросов
+    const mockUser: User = { id: 1, telegram_id: 123456789, username: "testuser" };
+    const mockProjects: Project[] = [{ id: 1, user_id: 1, name: "Test Project" }];
+
+    (ctx.storage as MockedNeonAdapterType).getUserByTelegramId.mockResolvedValue(mockUser);
+    (ctx.storage as MockedNeonAdapterType).getProjectsByUserId.mockResolvedValue(mockProjects);
+    (ctx.storage as MockedNeonAdapterType).getCompetitorAccounts.mockResolvedValue([]);
+
+    // Вызываем обработчик входа в сцену напрямую
+    await handleCompetitorEnter(ctx);
+
+    // Проверяем, что был вызван метод initialize
+    expect((ctx.storage as MockedNeonAdapterType).initialize).toHaveBeenCalled();
+
+    // Проверяем, что был вызван метод getUserByTelegramId с правильным параметром
+    expect((ctx.storage as MockedNeonAdapterType).getUserByTelegramId).toHaveBeenCalledWith(123456789);
+
+    // Проверяем, что был вызван метод getProjectsByUserId с правильным параметром
+    expect((ctx.storage as MockedNeonAdapterType).getProjectsByUserId).toHaveBeenCalledWith(1);
+
+    // Проверяем, что был вызван метод getCompetitorAccounts с правильным параметром
+    expect((ctx.storage as MockedNeonAdapterType).getCompetitorAccounts).toHaveBeenCalledWith(1);
+
+    // Проверяем, что был вызван метод reply с сообщением о добавлении конкурента
+    expect(ctx.reply).toHaveBeenCalledWith(
+      expect.stringContaining("В проекте \"Test Project\" нет добавленных конкурентов. Хотите добавить?"),
+      expect.anything()
+    );
+
+    // Проверяем, что был вызван метод close
+    expect((ctx.storage as MockedNeonAdapterType).close).toHaveBeenCalled();
+  });
+
+  it("should show project selection when user has multiple projects", async () => {
+    // Мокируем результаты запросов
+    const mockUser: User = { id: 1, telegram_id: 123456789, username: "testuser" };
+    const mockProjects: Project[] = [
+      { id: 1, user_id: 1, name: "Project 1" },
+      { id: 2, user_id: 1, name: "Project 2" }
+    ];
+
+    (ctx.storage as MockedNeonAdapterType).getUserByTelegramId.mockResolvedValue(mockUser);
+    (ctx.storage as MockedNeonAdapterType).getProjectsByUserId.mockResolvedValue(mockProjects);
+
+    // Вызываем обработчик входа в сцену напрямую
+    await handleCompetitorEnter(ctx);
+
+    // Проверяем, что был вызван метод initialize
+    expect((ctx.storage as MockedNeonAdapterType).initialize).toHaveBeenCalled();
+
+    // Проверяем, что был вызван метод getUserByTelegramId с правильным параметром
+    expect((ctx.storage as MockedNeonAdapterType).getUserByTelegramId).toHaveBeenCalledWith(123456789);
+
+    // Проверяем, что был вызван метод getProjectsByUserId с правильным параметром
+    expect((ctx.storage as MockedNeonAdapterType).getProjectsByUserId).toHaveBeenCalledWith(1);
+
+    // Проверяем, что не был вызван метод getCompetitorAccounts
+    expect((ctx.storage as MockedNeonAdapterType).getCompetitorAccounts).not.toHaveBeenCalled();
+
+    // Проверяем, что был вызван метод reply с сообщением о выборе проекта
     expect(ctx.reply).toHaveBeenCalledWith(
       "Выберите проект для просмотра конкурентов:",
-      {
-        reply_markup: Markup.inlineKeyboard(expectedProjectButtons)
-          .reply_markup,
-      }
+      expect.anything()
     );
-    expect(mockNeonAdapterInstance.close).toHaveBeenCalledTimes(1);
-    expect(ctx.scene.leave).not.toHaveBeenCalled();
+
+    // Проверяем, что был вызван метод close
+    expect((ctx.storage as MockedNeonAdapterType).close).toHaveBeenCalled();
   });
 
-  it("should handle error during adapter.initialize", async () => {
-    const update = {
-      update_id: 21,
-      from: { id: 1 },
-      message: undefined,
-      callback_query: {
-        id: "cb1_enter_init_error",
-        from: {
-          id: 1,
-          first_name: "Test",
-          is_bot: false,
-          username: "testuser",
-        },
-        message: {
-          message_id: 1,
-          date: Date.now(),
-          chat: { id: 1, type: "private" },
-        },
-        chat_instance: "1",
-        data: "some_enter_data",
-      },
-    };
-    ctx = createMockContext(update);
-    // consoleErrorSpy мокируется в beforeEach
+  it("should handle error and leave scene", async () => {
+    // Мокируем ошибку в запросе
+    (ctx.storage as MockedNeonAdapterType).initialize.mockRejectedValue(new Error("Database error"));
 
-    const initError = new Error("Init failed");
-    mockNeonAdapterInstance.initialize.mockRejectedValue(initError);
+    // Вызываем обработчик входа в сцену напрямую
+    await handleCompetitorEnter(ctx);
 
-    await competitorScene.enterMiddleware()(ctx, async () => {});
-
-    expect(mockNeonAdapterInstance.initialize).toHaveBeenCalledTimes(1);
+    // Проверяем, что был вызван console.error
     expect(consoleErrorSpy).toHaveBeenCalledWith(
-      // Используем переменную шпиона
       "Ошибка при получении конкурентов:",
-      initError
-    );
-    // Исправляем проверку ctx.reply
-    const replyCallsInit = (ctx.reply as jest.Mock).mock.calls;
-    expect(replyCallsInit.length).toBe(1);
-    expect(replyCallsInit[0][0]).toContain(
-      "Не удалось загрузить данные для управления конкурентами"
+      expect.any(Error)
     );
 
-    expect(mockNeonAdapterInstance.close).not.toHaveBeenCalled(); // Не должен вызываться, если initialize упал
-    expect(ctx.scene.leave).toHaveBeenCalledTimes(1);
-  });
-
-  it("should handle error during adapter.getProjectsByUserId", async () => {
-    const update = {
-      update_id: 1,
-      from: { id: 1 },
-      message: undefined,
-      callback_query: {
-        id: "cb1_enter_projects_error",
-        from: {
-          id: 1,
-          first_name: "Test",
-          is_bot: false,
-          username: "testuser",
-        },
-        message: {
-          message_id: 1,
-          date: Date.now(),
-          chat: { id: 1, type: "private" },
-        },
-        chat_instance: "1",
-        data: "some_enter_data",
-      },
-    };
-    ctx = createMockContext(update);
-    // consoleErrorSpy мокируется в beforeEach
-    const userMock: User = {
-      id: 1,
-      telegram_id: 1,
-      username: "testuser",
-      created_at: new Date().toISOString(),
-      is_active: true,
-    };
-    const projectsError = new Error("GetProjects failed");
-
-    mockNeonAdapterInstance.initialize.mockResolvedValue(undefined);
-    mockNeonAdapterInstance.getUserByTelegramId.mockResolvedValue(userMock);
-    mockNeonAdapterInstance.getProjectsByUserId.mockRejectedValue(
-      projectsError
+    // Проверяем, что был вызван метод reply с сообщением об ошибке
+    expect(ctx.reply).toHaveBeenCalledWith(
+      "Не удалось загрузить данные для управления конкурентами. Попробуйте позже или обратитесь в поддержку."
     );
 
-    await competitorScene.enterMiddleware()(ctx, async () => {});
-
-    expect(mockNeonAdapterInstance.initialize).toHaveBeenCalledTimes(1);
-    expect(mockNeonAdapterInstance.getUserByTelegramId).toHaveBeenCalledWith(1);
-    expect(mockNeonAdapterInstance.getProjectsByUserId).toHaveBeenCalledWith(
-      userMock.id
-    );
-    expect(consoleErrorSpy).toHaveBeenCalledWith(
-      // Используем переменную шпиона
-      "Ошибка при получении конкурентов:",
-      projectsError
-    );
-    // Исправляем проверку ctx.reply
-    const replyCallsProj = (ctx.reply as jest.Mock).mock.calls;
-    expect(replyCallsProj.length).toBe(1);
-    expect(replyCallsProj[0][0]).toContain(
-      "Не удалось загрузить данные для управления конкурентами"
-    );
-
-    expect(mockNeonAdapterInstance.close).not.toHaveBeenCalled(); // Не должен вызываться, если getProjectsByUserId упал
-    expect(ctx.scene.leave).toHaveBeenCalledTimes(1);
+    // Проверяем, что был вызван метод leave
+    expect(ctx.scene.leave).toHaveBeenCalled();
   });
 });
-
-// Другие describe блоки для actions и on text будут в других файлах

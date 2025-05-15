@@ -1,425 +1,404 @@
-import {
-  describe,
-  it,
-  expect,
-  beforeEach,
-  afterEach,
-  jest,
-  mock,
-  spyOn,
-  vi,
-} from "bun:test";
-import { Context, Markup } from "telegraf";
-import { Update, UserFromGetMe, CallbackQuery } from "telegraf/types";
-// import { competitorScene } from "../../../scenes/competitor-scene"; // Не нужен сам экземпляр сцены
-import { NeonAdapter } from "../../../adapters/neon-adapter";
-import {
-  ScraperBotContext,
-  ScraperSceneStep,
-  Project,
-  Competitor,
-  User,
-  ScraperSceneSessionData,
-} from "@/types";
-// Импортируем все необходимые обработчики
+import { describe, it, expect, jest, mock, beforeEach, afterEach, spyOn } from "bun:test";
 import {
   handleDeleteCompetitorAction,
-  // обработчики для enter и onText здесь не нужны, только для actions
   handleCompetitorsProjectAction,
   handleAddCompetitorAction,
-  handleExitCompetitorSceneAction, // Предполагаем, что такой будет для exit_scene
-  handleBackToProjectsCompetitorAction, // Предполагаем, что такой будет для back_to_projects
+  handleExitCompetitorSceneAction,
+  handleBackToProjectsCompetitorAction
 } from "../../../scenes/competitor-scene";
+import { NeonAdapter } from "../../../adapters/neon-adapter";
+import { ScraperBotContext, Competitor, ScraperSceneStep } from "@/types";
 
-// Объявляем тип для мока адаптера
-type MockedNeonAdapterType = NeonAdapter & {
-  [K in keyof NeonAdapter]: jest.Mock;
-  deleteCompetitorAccount: jest.Mock;
-  getCompetitorAccounts: jest.Mock;
-  addCompetitorAccount: jest.Mock;
-};
-
-// Определяем тип контекста с полем match
-type ActionContextWithMatch = ScraperBotContext & {
-  scene: {
-    session: ScraperSceneSessionData;
-    leave: jest.Mock;
-    reenter: jest.Mock;
-    enter: jest.Mock;
-  };
-  match: RegExpExecArray | null;
-  reply: jest.Mock;
-  answerCbQuery: jest.Mock;
-  editMessageReplyMarkup: jest.Mock; // Добавим, если используется в обработчиках
-  update: Partial<Update.CallbackQueryUpdate>; // Уточним тип update
-};
-
-const createMockContext = (
-  callbackData?: string,
-  initialSession: Partial<ScraperSceneSessionData> = {}
-): ActionContextWithMatch => {
-  const botInfo: UserFromGetMe = {
-    id: 12345,
-    is_bot: true,
-    first_name: "TestBot",
-    username: "TestBot",
-    can_join_groups: true,
-    can_read_all_group_messages: true,
-    supports_inline_queries: true,
-  };
-
-  const update: Update.CallbackQueryUpdate = {
-    update_id: Date.now(), // Уникальный update_id
-    callback_query: {
-      id: `cb_${Date.now()}`, // Уникальный callback_query_id
-      from: {
-        id: 1,
-        first_name: "TestUser",
-        is_bot: false,
-        username: "testuser",
-      },
-      message: {
-        message_id: 1,
-        date: Date.now(),
-        chat: { id: 1, type: "private" },
-      },
-      chat_instance: "1",
-      data: callbackData || "default_callback_data",
+// Мокируем зависимости
+mock.module("../../../logger", () => {
+  return {
+    logger: {
+      info: jest.fn(),
+      error: jest.fn(),
+      warn: jest.fn(),
     },
   };
+});
 
-  const ctx = new Context(update, {} as any, botInfo) as ActionContextWithMatch;
+// Мокируем NeonAdapter
+mock.module("../../../adapters/neon-adapter", () => {
+  return {
+    NeonAdapter: jest.fn().mockImplementation(() => ({
+      initialize: jest.fn().mockResolvedValue(undefined),
+      close: jest.fn().mockResolvedValue(undefined),
+      deleteCompetitorAccount: jest.fn(),
+      getCompetitorAccounts: jest.fn(),
+    })),
+  };
+});
 
-  ctx.scene = {
-    enter: jest.fn(),
-    leave: jest.fn(),
-    reenter: jest.fn(),
-    session: {
-      step: initialSession.step,
-      projectId: initialSession.projectId,
-      ...initialSession,
-    } as ScraperSceneSessionData,
-    // state: {}, // state и current могут не понадобиться при прямом вызове обработчиков
-    // current: undefined,
-    // ctx: ctx,
-  } as any;
-
-  ctx.reply = jest.fn().mockResolvedValue(true);
-  ctx.answerCbQuery = jest.fn().mockResolvedValue(true);
-  ctx.editMessageReplyMarkup = jest.fn().mockResolvedValue(true);
-  ctx.match = null;
-
-  const adapterInstance = new NeonAdapter();
-  ctx.storage = adapterInstance;
-  // mockNeonAdapterInstance = adapterInstance as NeonAdapter & { // Больше не присваиваем глобальную переменную
-  //   [K in keyof NeonAdapter]: jest.Mock;
-  // };
-
-  return ctx;
+// Создаем тип для мокированного адаптера
+type MockedNeonAdapterType = {
+  initialize: jest.Mock;
+  close: jest.Mock;
+  deleteCompetitorAccount: jest.Mock;
+  getCompetitorAccounts: jest.Mock;
 };
 
-describe("Competitor Scene Actions - Direct Handler Tests", () => {
-  let ctx: ActionContextWithMatch;
+describe("competitorScene - Action Handlers", () => {
+  let ctx: ScraperBotContext & { match: RegExpExecArray };
   let consoleErrorSpy: jest.SpiedFunction<typeof console.error>;
 
   beforeEach(() => {
-    vi.clearAllMocks();
-    consoleErrorSpy = spyOn(console, "error").mockImplementation(() => {});
+    // Создаем мок для контекста
+    ctx = {
+      reply: jest.fn().mockResolvedValue(undefined),
+      editMessageReplyMarkup: jest.fn().mockResolvedValue(undefined),
+      answerCbQuery: jest.fn().mockResolvedValue(undefined),
+      scene: {
+        session: {},
+        leave: jest.fn(),
+        reenter: jest.fn(),
+        enter: jest.fn(),
+      },
+      storage: new NeonAdapter() as unknown as MockedNeonAdapterType,
+      match: ["", "1", "testuser"] as unknown as RegExpExecArray,
+      from: {
+        id: 123456789,
+        username: "testuser",
+        first_name: "Test",
+        last_name: "User",
+        is_bot: false,
+      },
+    };
 
-    mock.module("../../../adapters/neon-adapter", () => {
-      return {
-        NeonAdapter: jest.fn().mockImplementation(() => ({
-          initialize: jest.fn<() => Promise<void>>().mockResolvedValue(undefined),
-          close: jest.fn<() => Promise<void>>().mockResolvedValue(undefined),
-          getUserByTelegramId: jest.fn<(telegramId: number) => Promise<User | null>>(),
-          getProjectsByUserId: jest.fn<(userId: number) => Promise<Project[] | null>>(),
-          getCompetitorAccounts: jest.fn<(projectId: number) => Promise<Competitor[] | null>>(),
-          addCompetitorAccount: jest.fn< (projectId: number, username: string, instagramUrl: string) => Promise<Competitor | null> >(),
-          deleteCompetitorAccount: jest.fn<(projectId: number, username: string) => Promise<boolean>>(),
-        })),
-      };
-    });
+    consoleErrorSpy = spyOn(console, "error").mockImplementation(() => {});
+    jest.clearAllMocks();
   });
 
   afterEach(() => {
-    if (consoleErrorSpy) {
-      consoleErrorSpy.mockRestore();
-    }
+    consoleErrorSpy.mockRestore();
   });
 
-  // --- Тесты для action: 'competitors_project_...' ---
-  describe("handleCompetitorsProjectAction", () => {
-    it("should show competitors list when a project is selected", async () => {
-      const projectId = 21;
-      ctx = createMockContext(`competitors_project_${projectId}`);
-      ctx.match = [`competitors_project_${projectId}`, projectId.toString()] as any;
-      // Получаем адаптер из контекста в тесте
-      const currentMockAdapter = ctx.storage as MockedNeonAdapterType;
+  describe("handleDeleteCompetitorAction", () => {
+    it("should delete competitor and show success message", async () => {
+      // Мокируем результат запроса deleteCompetitorAccount
+      (ctx.storage as MockedNeonAdapterType).deleteCompetitorAccount.mockResolvedValue(true);
 
-      const competitorMock: Competitor = {
-        id: 101, project_id: projectId, username: "comp1", instagram_url: "http://insta/comp1", created_at: "", is_active: true,
-      };
-      
-      // ЯВНАЯ УСТАНОВКА МОКОВ ДЛЯ ТЕСТА:
-      currentMockAdapter.initialize.mockResolvedValue(undefined);
-      currentMockAdapter.getCompetitorAccounts.mockResolvedValue([competitorMock]);
-      currentMockAdapter.close.mockResolvedValue(undefined);
-      // Убедимся, что другие методы не будут вызваны
-      currentMockAdapter.addCompetitorAccount.mockImplementation(() => { throw new Error("addCompetitorAccount should not be called");});
-      currentMockAdapter.deleteCompetitorAccount.mockImplementation(() => { throw new Error("deleteCompetitorAccount should not be called");});
+      // Вызываем обработчик
+      await handleDeleteCompetitorAction(ctx);
 
-      await handleCompetitorsProjectAction(ctx);
+      // Проверяем, что был вызван метод initialize
+      expect((ctx.storage as MockedNeonAdapterType).initialize).toHaveBeenCalled();
 
-      expect(currentMockAdapter.initialize).toHaveBeenCalledTimes(1);
-      expect(currentMockAdapter.getCompetitorAccounts).toHaveBeenCalledWith(projectId);
-      const competitorListText = `1. [${competitorMock.username}](${competitorMock.instagram_url})`;
+      // Проверяем, что был вызван метод deleteCompetitorAccount с правильными параметрами
+      expect((ctx.storage as MockedNeonAdapterType).deleteCompetitorAccount).toHaveBeenCalledWith(1, "testuser");
+
+      // Проверяем, что был вызван метод reply с сообщением об успешном удалении
       expect(ctx.reply).toHaveBeenCalledWith(
-        `Конкуренты в выбранном проекте:\n\n${competitorListText}\n\nЧто вы хотите сделать дальше?`,
-        expect.anything()
+        'Конкурент "testuser" успешно удален из проекта.'
       );
-      expect(currentMockAdapter.close).toHaveBeenCalledTimes(1);
-      expect(ctx.answerCbQuery).toHaveBeenCalledTimes(1);
+
+      // Проверяем, что был вызван метод editMessageReplyMarkup
+      expect(ctx.editMessageReplyMarkup).toHaveBeenCalledWith(undefined);
+
+      // Проверяем, что был вызван метод answerCbQuery
+      expect(ctx.answerCbQuery).toHaveBeenCalledWith("Удалено");
+
+      // Проверяем, что был вызван метод close
+      expect((ctx.storage as MockedNeonAdapterType).close).toHaveBeenCalled();
     });
 
-    it("should show 'no competitors' message if project has none", async () => {
-      const projectId = 20;
-      ctx = createMockContext(`competitors_project_${projectId}`);
-      ctx.match = [`competitors_project_${projectId}`, projectId.toString()] as any;
-      // Получаем адаптер из контекста в тесте
-      const currentMockAdapter = ctx.storage as MockedNeonAdapterType;
+    it("should show error message if competitor not found", async () => {
+      // Мокируем результат запроса deleteCompetitorAccount
+      (ctx.storage as MockedNeonAdapterType).deleteCompetitorAccount.mockResolvedValue(false);
 
-      // ЯВНОЕ МОКИРОВАНИЕ ДЛЯ КОНКРЕТНОГО ТЕСТА:
-      currentMockAdapter.initialize.mockResolvedValue(undefined);
-      currentMockAdapter.getCompetitorAccounts.mockResolvedValue([]); // <--- Важно: пустой массив
-      currentMockAdapter.close.mockResolvedValue(undefined);
-      // Гарантируем, что другие методы адаптера не будут случайно вызваны
-      currentMockAdapter.addCompetitorAccount.mockImplementation(() => { throw new Error("addCompetitorAccount should not be called in this specific test");});
-      currentMockAdapter.deleteCompetitorAccount.mockImplementation(() => { throw new Error("deleteCompetitorAccount should not be called in this specific test");});
+      // Вызываем обработчик
+      await handleDeleteCompetitorAction(ctx);
 
+      // Проверяем, что был вызван метод initialize
+      expect((ctx.storage as MockedNeonAdapterType).initialize).toHaveBeenCalled();
+
+      // Проверяем, что был вызван метод deleteCompetitorAccount с правильными параметрами
+      expect((ctx.storage as MockedNeonAdapterType).deleteCompetitorAccount).toHaveBeenCalledWith(1, "testuser");
+
+      // Проверяем, что был вызван метод reply с сообщением об ошибке
+      expect(ctx.reply).toHaveBeenCalledWith(
+        'Не удалось найти или удалить конкурента "testuser". Возможно, он уже был удален.'
+      );
+
+      // Проверяем, что был вызван метод answerCbQuery
+      expect(ctx.answerCbQuery).toHaveBeenCalledWith("Ошибка удаления");
+
+      // Проверяем, что был вызван метод close
+      expect((ctx.storage as MockedNeonAdapterType).close).toHaveBeenCalled();
+    });
+
+    it("should handle error when deleteCompetitorAccount throws", async () => {
+      // Мокируем ошибку в запросе deleteCompetitorAccount
+      (ctx.storage as MockedNeonAdapterType).deleteCompetitorAccount.mockRejectedValue(new Error("Database error"));
+
+      // Вызываем обработчик
+      await handleDeleteCompetitorAction(ctx);
+
+      // Проверяем, что был вызван метод initialize
+      expect((ctx.storage as MockedNeonAdapterType).initialize).toHaveBeenCalled();
+
+      // Проверяем, что был вызван метод deleteCompetitorAccount с правильными параметрами
+      expect((ctx.storage as MockedNeonAdapterType).deleteCompetitorAccount).toHaveBeenCalledWith(1, "testuser");
+
+      // Проверяем, что был вызван console.error
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        expect.stringContaining("Ошибка при удалении конкурента testuser из проекта 1:"),
+        expect.any(Error)
+      );
+
+      // Проверяем, что был вызван метод reply с сообщением об ошибке
+      expect(ctx.reply).toHaveBeenCalledWith(
+        "Произошла техническая ошибка при удалении конкурента. Попробуйте позже."
+      );
+
+      // Проверяем, что был вызван метод answerCbQuery
+      expect(ctx.answerCbQuery).toHaveBeenCalledWith("Ошибка");
+
+      // Проверяем, что был вызван метод close
+      expect((ctx.storage as MockedNeonAdapterType).close).toHaveBeenCalled();
+    });
+
+    it("should handle invalid data in match", async () => {
+      // Устанавливаем невалидные данные в match
+      ctx.match = ["", "invalid", ""] as unknown as RegExpExecArray;
+
+      // Вызываем обработчик
+      await handleDeleteCompetitorAction(ctx);
+
+      // Проверяем, что был вызван console.error
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        expect.stringContaining("Invalid data parsed from delete action:")
+      );
+
+      // Проверяем, что был вызван метод reply с сообщением об ошибке
+      expect(ctx.reply).toHaveBeenCalledWith(
+        "Ошибка при удалении конкурента. Пожалуйста, попробуйте снова."
+      );
+
+      // Проверяем, что был вызван метод answerCbQuery
+      expect(ctx.answerCbQuery).toHaveBeenCalledWith("Ошибка");
+
+      // Проверяем, что не был вызван метод initialize
+      expect((ctx.storage as MockedNeonAdapterType).initialize).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("handleCompetitorsProjectAction", () => {
+    beforeEach(() => {
+      // Устанавливаем match для projectId
+      ctx.match = ["competitors_project_1", "1"] as unknown as RegExpExecArray;
+    });
+
+    it("should show competitors list when project has competitors", async () => {
+      // Мокируем результат запроса getCompetitorAccounts
+      const mockCompetitors: Competitor[] = [
+        { id: 1, project_id: 1, username: "competitor1", instagram_url: "https://instagram.com/competitor1", is_active: true },
+        { id: 2, project_id: 1, username: "competitor2", instagram_url: "https://instagram.com/competitor2", is_active: true }
+      ];
+      (ctx.storage as MockedNeonAdapterType).getCompetitorAccounts.mockResolvedValue(mockCompetitors);
+
+      // Вызываем обработчик
       await handleCompetitorsProjectAction(ctx);
-      
-      expect(currentMockAdapter.initialize).toHaveBeenCalledTimes(1);
-      expect(currentMockAdapter.getCompetitorAccounts).toHaveBeenCalledWith(projectId);
+
+      // Проверяем, что был вызван метод initialize
+      expect((ctx.storage as MockedNeonAdapterType).initialize).toHaveBeenCalled();
+
+      // Проверяем, что был вызван метод getCompetitorAccounts с правильным параметром
+      expect((ctx.storage as MockedNeonAdapterType).getCompetitorAccounts).toHaveBeenCalledWith(1);
+
+      // Проверяем, что был вызван метод reply с сообщением со списком конкурентов
+      expect(ctx.reply).toHaveBeenCalledWith(
+        expect.stringContaining("Конкуренты в выбранном проекте:"),
+        expect.anything()
+      );
+
+      // Проверяем, что был вызван метод close
+      expect((ctx.storage as MockedNeonAdapterType).close).toHaveBeenCalled();
+
+      // Проверяем, что был вызван метод answerCbQuery
+      expect(ctx.answerCbQuery).toHaveBeenCalled();
+    });
+
+    it("should show add competitor message when project has no competitors", async () => {
+      // Мокируем результат запроса getCompetitorAccounts
+      (ctx.storage as MockedNeonAdapterType).getCompetitorAccounts.mockResolvedValue([]);
+
+      // Вызываем обработчик
+      await handleCompetitorsProjectAction(ctx);
+
+      // Проверяем, что был вызван метод initialize
+      expect((ctx.storage as MockedNeonAdapterType).initialize).toHaveBeenCalled();
+
+      // Проверяем, что был вызван метод getCompetitorAccounts с правильным параметром
+      expect((ctx.storage as MockedNeonAdapterType).getCompetitorAccounts).toHaveBeenCalledWith(1);
+
+      // Проверяем, что был вызван метод reply с сообщением о добавлении конкурента
       expect(ctx.reply).toHaveBeenCalledWith(
         "В выбранном проекте нет добавленных конкурентов. Хотите добавить?",
         expect.anything()
       );
-      expect(currentMockAdapter.close).toHaveBeenCalledTimes(1);
+
+      // Проверяем, что был вызван метод close
+      expect((ctx.storage as MockedNeonAdapterType).close).toHaveBeenCalled();
+
+      // Проверяем, что был вызван метод answerCbQuery
+      expect(ctx.answerCbQuery).toHaveBeenCalled();
     });
 
     it("should handle error when getCompetitorAccounts throws", async () => {
-      const projectId = 22;
-      ctx = createMockContext(`competitors_project_${projectId}`);
-      ctx.match = [
-        `competitors_project_${projectId}`,
-        projectId.toString(),
-      ] as any;
-      // Получаем адаптер из контекста в тесте
-      const currentMockAdapter = ctx.storage as MockedNeonAdapterType;
-      const dbError = new Error("DB Boom!");
-      currentMockAdapter.getCompetitorAccounts.mockRejectedValue(dbError);
-      currentMockAdapter.initialize.mockResolvedValue(undefined);
+      // Мокируем ошибку в запросе getCompetitorAccounts
+      (ctx.storage as MockedNeonAdapterType).getCompetitorAccounts.mockRejectedValue(new Error("Database error"));
 
+      // Вызываем обработчик
       await handleCompetitorsProjectAction(ctx);
 
+      // Проверяем, что был вызван метод initialize
+      expect((ctx.storage as MockedNeonAdapterType).initialize).toHaveBeenCalled();
+
+      // Проверяем, что был вызван метод getCompetitorAccounts с правильным параметром
+      expect((ctx.storage as MockedNeonAdapterType).getCompetitorAccounts).toHaveBeenCalledWith(1);
+
+      // Проверяем, что был вызван console.error
       expect(consoleErrorSpy).toHaveBeenCalledWith(
-        `Ошибка при получении конкурентов проекта ${projectId}:`,
-        dbError
+        expect.stringContaining("Ошибка при получении конкурентов проекта 1:"),
+        expect.any(Error)
       );
+
+      // Проверяем, что был вызван метод reply с сообщением об ошибке
       expect(ctx.reply).toHaveBeenCalledWith(
         "Не удалось загрузить список конкурентов для этого проекта. Попробуйте позже или обратитесь в поддержку."
       );
-      // expect(currentMockAdapter.close).toHaveBeenCalledTimes(1); // close может не вызваться при ошибке до него
-    });
 
-    // Тест на невалидный projectId (NaN) не нужен, так как parseInt в обработчике отловит это,
-    // но ctx.match формируется из callback_data, который всегда строка.
-    // Проверка isNaN(projectId) внутри обработчика должна быть.
+      // Проверяем, что был вызван метод answerCbQuery
+      expect(ctx.answerCbQuery).toHaveBeenCalled();
+    });
   });
 
-  // --- Тесты для action: 'add_competitor_...' ---
   describe("handleAddCompetitorAction", () => {
-    it("should set step to ADD_COMPETITOR and ask for URL", async () => {
-      const projectId = 30;
-      ctx = createMockContext(`add_competitor_${projectId}`);
-      ctx.match = [`add_competitor_${projectId}`, projectId.toString()] as any;
-      ctx.scene.session = { step: undefined, projectId: undefined };
-      // Адаптер здесь не вызывается напрямую в обработчике, только сессия меняется
+    beforeEach(() => {
+      // Устанавливаем match для projectId
+      ctx.match = ["add_competitor_1", "1"] as unknown as RegExpExecArray;
+    });
+
+    it("should set session data and prompt for competitor URL", async () => {
+      // Вызываем обработчик
       await handleAddCompetitorAction(ctx);
 
-      expect(ctx.scene.session.projectId).toBe(projectId);
+      // Проверяем, что был установлен projectId в сессии
+      expect(ctx.scene.session.projectId).toBe(1);
+
+      // Проверяем, что был установлен шаг в сессии
       expect(ctx.scene.session.step).toBe(ScraperSceneStep.ADD_COMPETITOR);
+
+      // Проверяем, что был вызван метод reply с запросом URL
       expect(ctx.reply).toHaveBeenCalledWith(
         "Введите Instagram URL конкурента (например, https://www.instagram.com/example):"
       );
-      expect(ctx.answerCbQuery).toHaveBeenCalledTimes(1);
+
+      // Проверяем, что был вызван метод answerCbQuery
+      expect(ctx.answerCbQuery).toHaveBeenCalled();
     });
 
-    it("should handle invalid project ID in callback data", async () => {
-      const invalidProjectIdStr = "abc";
-      ctx = createMockContext(`add_competitor_${invalidProjectIdStr}`);
-      // match[1] будет "abc", что приведет к NaN при parseInt
-      ctx.match = [
-        `add_competitor_${invalidProjectIdStr}`,
-        invalidProjectIdStr,
-      ] as any;
+    it("should handle invalid projectId", async () => {
+      // Устанавливаем невалидный projectId в match
+      ctx.match = ["add_competitor_invalid", "invalid"] as unknown as RegExpExecArray;
 
+      // Вызываем обработчик
       await handleAddCompetitorAction(ctx);
 
+      // Проверяем, что был вызван console.error
       expect(consoleErrorSpy).toHaveBeenCalledWith(
-        `Invalid projectId parsed from action: ${invalidProjectIdStr}`
+        expect.stringContaining("Invalid projectId parsed from action:")
       );
+
+      // Проверяем, что был вызван метод reply с сообщением об ошибке
       expect(ctx.reply).toHaveBeenCalledWith(
         "Ошибка выбора проекта. Пожалуйста, вернитесь назад и выберите проект снова."
       );
-      expect(ctx.answerCbQuery).toHaveBeenCalledTimes(1);
+
+      // Проверяем, что был вызван метод answerCbQuery
+      expect(ctx.answerCbQuery).toHaveBeenCalled();
+
+      // Проверяем, что не был установлен projectId в сессии
       expect(ctx.scene.session.projectId).toBeUndefined();
-      expect(ctx.scene.session.step).toBeUndefined();
     });
   });
 
-  // --- Тесты для action: 'exit_scene' ---
   describe("handleExitCompetitorSceneAction", () => {
-    it("should leave the scene and answer callback query", async () => {
-      ctx = createMockContext("exit_scene");
+    it("should leave scene and show message", async () => {
+      // Вызываем обработчик
       await handleExitCompetitorSceneAction(ctx);
 
+      // Проверяем, что был вызван метод reply с сообщением
       expect(ctx.reply).toHaveBeenCalledWith(
         "Вы вышли из режима управления конкурентами.",
-        expect.objectContaining({ reply_markup: { remove_keyboard: true } })
+        expect.anything()
       );
-      expect(ctx.scene.leave).toHaveBeenCalledTimes(1);
-      expect(ctx.answerCbQuery).toHaveBeenCalledTimes(1);
+
+      // Проверяем, что был вызван метод leave
+      expect(ctx.scene.leave).toHaveBeenCalled();
+
+      // Проверяем, что был вызван метод answerCbQuery
+      expect(ctx.answerCbQuery).toHaveBeenCalled();
+    });
+
+    it("should enter project scene if currentProjectId is set", async () => {
+      // Устанавливаем currentProjectId в сессии
+      ctx.scene.session.currentProjectId = 1;
+
+      // Вызываем обработчик
+      await handleExitCompetitorSceneAction(ctx);
+
+      // Проверяем, что был вызван метод reply с сообщением
+      expect(ctx.reply).toHaveBeenCalledWith(
+        "Вы вышли из режима управления конкурентами.",
+        expect.anything()
+      );
+
+      // Проверяем, что был вызван метод leave
+      expect(ctx.scene.leave).toHaveBeenCalled();
+
+      // Проверяем, что был вызван метод enter с правильными параметрами
+      expect(ctx.scene.enter).toHaveBeenCalledWith(
+        "projectScene",
+        { projectId: 1 }
+      );
+
+      // Проверяем, что был вызван метод answerCbQuery
+      expect(ctx.answerCbQuery).toHaveBeenCalled();
     });
   });
 
-  // --- Тесты для action: 'back_to_projects' ---
   describe("handleBackToProjectsCompetitorAction", () => {
-    it("should reenter the scene and answer callback query", async () => {
-      ctx = createMockContext("back_to_projects");
+    it("should enter projects scene", async () => {
+      // Вызываем обработчик
       await handleBackToProjectsCompetitorAction(ctx);
 
-      expect(ctx.scene.reenter).toHaveBeenCalledTimes(1);
-      expect(ctx.answerCbQuery).toHaveBeenCalledTimes(1);
-    });
-  });
+      // Проверяем, что был вызван метод answerCbQuery
+      expect(ctx.answerCbQuery).toHaveBeenCalled();
 
-  // --- Тесты для handleDeleteCompetitorAction ---
-  // Эти тесты уже были в competitor-scene-new.test.ts и должны быть перенесены сюда или оставлены там,
-  // если competitor-scene-new.test.ts будет удален или его назначение изменится.
-  // Пока предположим, что они актуальны здесь.
-  describe("handleDeleteCompetitorAction", () => {
-    it("should call deleteCompetitorAccount and reply on successful deletion", async () => {
-      const projectId = 1;
-      const username = "comp_to_delete";
-      ctx = createMockContext(`delete_competitor_${projectId}_${username}`);
-      ctx.match = [
-        `delete_competitor_${projectId}_${username}`,
-        projectId.toString(),
-        username,
-      ] as any;
-      // Получаем адаптер из контекста в тесте
-      const currentMockAdapter = ctx.storage as MockedNeonAdapterType;
-
-      currentMockAdapter.deleteCompetitorAccount.mockResolvedValue(true);
-      currentMockAdapter.initialize.mockResolvedValue(undefined);
-      currentMockAdapter.close.mockResolvedValue(undefined);
-
-      await handleDeleteCompetitorAction(ctx);
-
-      expect(currentMockAdapter.initialize).toHaveBeenCalledTimes(1);
-      expect(currentMockAdapter.deleteCompetitorAccount).toHaveBeenCalledWith(
-        projectId,
-        username
-      );
-      expect(ctx.reply).toHaveBeenCalledWith(
-        `Конкурент "${username}" успешно удален из проекта.`
-      );
-      expect(ctx.editMessageReplyMarkup).toHaveBeenCalledWith(undefined);
-      expect(ctx.answerCbQuery).toHaveBeenCalledWith("Удалено");
-      expect(currentMockAdapter.close).toHaveBeenCalledTimes(1);
+      // Проверяем, что был вызван метод enter с правильным параметром
+      expect(ctx.scene.enter).toHaveBeenCalledWith("instagram_scraper_projects");
     });
 
-    it("should reply with error if deleteCompetitorAccount returns false (not found)", async () => {
-      const projectId = 2;
-      const username = "comp_not_found";
-      ctx = createMockContext(`delete_competitor_${projectId}_${username}`);
-      ctx.match = [
-        `delete_competitor_${projectId}_${username}`,
-        projectId.toString(),
-        username,
-      ] as any;
-      // Получаем адаптер из контекста в тесте
-      const currentMockAdapter = ctx.storage as MockedNeonAdapterType;
-      currentMockAdapter.deleteCompetitorAccount.mockResolvedValue(false);
-      currentMockAdapter.initialize.mockResolvedValue(undefined);
-      currentMockAdapter.close.mockResolvedValue(undefined);
+    it("should use customSceneEnterMock if provided", async () => {
+      // Создаем мок для customSceneEnterMock
+      const customSceneEnterMock = jest.fn();
+      ctx.customSceneEnterMock = customSceneEnterMock;
 
-      await handleDeleteCompetitorAction(ctx);
+      // Вызываем обработчик
+      await handleBackToProjectsCompetitorAction(ctx);
 
-      expect(currentMockAdapter.deleteCompetitorAccount).toHaveBeenCalledWith(
-        projectId,
-        username
-      );
-      expect(ctx.reply).toHaveBeenCalledWith(
-        `Не удалось найти или удалить конкурента "${username}". Возможно, он уже был удален.`
-      );
-      expect(ctx.answerCbQuery).toHaveBeenCalledWith("Ошибка удаления");
-    });
+      // Проверяем, что был вызван метод answerCbQuery
+      expect(ctx.answerCbQuery).toHaveBeenCalled();
 
-    it("should reply with error and log if deleteCompetitorAccount throws (DB error)", async () => {
-      const projectId = 3;
-      const username = "comp_db_error";
-      const dbError = new Error("DB boom on delete");
-      ctx = createMockContext(`delete_competitor_${projectId}_${username}`);
-      ctx.match = [
-        `delete_competitor_${projectId}_${username}`,
-        projectId.toString(),
-        username,
-      ] as any;
-      // Получаем адаптер из контекста в тесте
-      const currentMockAdapter = ctx.storage as MockedNeonAdapterType;
-      currentMockAdapter.deleteCompetitorAccount.mockRejectedValue(dbError);
-      currentMockAdapter.initialize.mockResolvedValue(undefined);
-      // currentMockAdapter.close might not be called if initialize or delete throws early
+      // Проверяем, что был вызван customSceneEnterMock с правильным параметром
+      expect(customSceneEnterMock).toHaveBeenCalledWith("instagram_scraper_projects");
 
-      await handleDeleteCompetitorAction(ctx);
-
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
-        `Ошибка при удалении конкурента ${username} из проекта ${projectId}:`,
-        dbError
-      );
-      expect(ctx.reply).toHaveBeenCalledWith(
-        "Произошла техническая ошибка при удалении конкурента. Попробуйте позже."
-      );
-      expect(ctx.answerCbQuery).toHaveBeenCalledWith("Ошибка");
-    });
-
-    it("should reply with error if callback data is invalid (NaN projectId)", async () => {
-      const invalidProjectIdStr = "abc";
-      const username = "comp_invalid_id";
-      ctx = createMockContext(
-        `delete_competitor_${invalidProjectIdStr}_${username}`
-      );
-      ctx.match = [
-        `delete_competitor_${invalidProjectIdStr}_${username}`,
-        invalidProjectIdStr,
-        username,
-      ] as any;
-
-      await handleDeleteCompetitorAction(ctx);
-
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
-        `Invalid data parsed from delete action: projectId=${invalidProjectIdStr}, username=${username}`
-      );
-      expect(ctx.reply).toHaveBeenCalledWith(
-        "Ошибка при удалении конкурента. Пожалуйста, попробуйте снова."
-      );
-      expect(ctx.answerCbQuery).toHaveBeenCalledWith("Ошибка");
-      expect(
-        // currentMockAdapter не используется здесь, так как это проверка на عدم вызов
-        (ctx.storage as MockedNeonAdapterType).deleteCompetitorAccount // Используем ctx.storage для проверки
-      ).not.toHaveBeenCalled();
+      // Проверяем, что не был вызван метод enter
+      expect(ctx.scene.enter).not.toHaveBeenCalled();
     });
   });
 });

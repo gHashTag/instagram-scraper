@@ -1,321 +1,284 @@
-import { describe, it, expect, beforeEach, afterEach, jest } from "bun:test";
-import { mock } from "bun:test";
-import { Context, Scenes, Telegraf } from "telegraf";
-import { Update, CallbackQuery, Message } from "telegraf/types";
-import { projectScene } from "../../../scenes/project-scene";
-import {
-  ScraperBotContext,
-  ScraperSceneSessionData,
-  ScraperSceneStep,
-  Project,
-} from "../../../types";
-import { NeonAdapter } from "../../../adapters/neon-adapter";
-// Импортируем экспортированные обработчики
-import {
-  handleExitSceneAction,
-  handleCreateProjectAction,
+import { describe, it, expect, jest, mock, beforeEach, afterEach } from "bun:test";
+import { 
+  handleExitSceneAction, 
+  handleCreateProjectAction, 
   handleBackToProjectsAction,
-  handleSelectProjectAction,
-  handleManageHashtagsAction,
+  handleProjectSelectionAction,
+  handleManageHashtagsAction
 } from "../../../scenes/project-scene";
+import { ScraperSceneStep } from "../../../types";
 
-// Мокируем модуль адаптера
-mock.module("../../../adapters/neon-adapter", () => {
+// Мокируем зависимости
+mock.module("../../../logger", () => {
   return {
-    NeonAdapter: jest.fn().mockImplementation(() => ({
-      initialize: jest.fn(),
-      getUserByTelegramId: jest.fn(),
-      getProjectsByUserId: jest.fn(),
-      getProjectById: jest.fn(),
-      createProject: jest.fn(),
-    })),
-  };
-});
-
-// Мокируем модуль сцен
-const { BaseScene: ActualBaseScene, Stage: ActualStage } = Scenes;
-mock.module("telegraf/scenes", () => {
-  return {
-    __esModule: true,
-    Scenes: {
-      Stage: ActualStage,
-      BaseScene: ActualBaseScene,
-      Context: Context,
+    logger: {
+      info: jest.fn(),
+      error: jest.fn(),
+      warn: jest.fn(),
     },
   };
 });
 
-// Мокируем Markup
-mock.module("telegraf", () => {
-  return {
-    __esModule: true,
-    Telegraf: Telegraf,
-    Context: Context,
-    Scenes: { Stage: ActualStage, BaseScene: ActualBaseScene },
-    Markup: {
-      button: {
-        callback: jest.fn((text, data) => ({ text, callback_data: data })),
-      },
-      inlineKeyboard: jest.fn((buttons) => ({
-        inline_keyboard: buttons.flat(),
-      })),
-      keyboard: jest.fn(),
-      removeKeyboard: jest.fn(() => ({ remove_keyboard: true })),
-      forceReply: jest.fn(),
-    },
-  };
-});
+describe("projectScene - Action Handlers", () => {
+  let ctx: any;
+  let mockStorage: any;
 
-// Определяем тип для мока адаптера
-type MockNeonAdapter = {
-  initialize: jest.Mock;
-  getUserByTelegramId: jest.Mock;
-  getProjectsByUserId: jest.Mock;
-  getProjectById: jest.Mock;
-  createProject: jest.Mock;
-};
-
-// --- Глобальные переменные для тестов ---
-let mockAdapter: MockNeonAdapter;
-let mockConsoleError: jest.Mock<any>;
-
-// Функция для создания тестового контекста
-const createTestContext = (
-  partialUpdateData: { callback_query?: Partial<CallbackQuery.DataQuery> } = {},
-  sceneSession?: Partial<ScraperSceneSessionData>,
-  adapterMethods?: Partial<MockNeonAdapter>
-): ScraperBotContext => {
-  // --- Base Mocks ---
-  const baseUser = {
-    id: 54321,
-    is_bot: false,
-    first_name: "Test",
-    language_code: "en",
-    username: "testuser",
-  };
-  const baseChat = {
-    id: 12345,
-    type: "private" as const,
-    first_name: "Test",
-    username: "testuser",
-  };
-  const baseMessage: Message.TextMessage = {
-    message_id: 1,
-    chat: baseChat,
-    date: Math.floor(Date.now() / 1000),
-    from: baseUser,
-    text: "Original message text",
-  };
-
-  // --- Build CallbackQuery (DataQuery) ---
-  const baseCallbackQuery: CallbackQuery.DataQuery = {
-    id: "test-cb-id",
-    from: baseUser,
-    chat_instance: "test-chat-instance",
-    data: "", // Гарантируем наличие data
-    message: baseMessage, // По умолчанию используем baseMessage
-  };
-
-  // Создаем финальный callback_query, мержим с partialUpdateData, если оно есть
-  const finalCallbackQuery: CallbackQuery.DataQuery = {
-    ...baseCallbackQuery,
-    ...(partialUpdateData.callback_query ?? {}), // Применяем переданные изменения
-    // Убедимся, что message тоже правильно смержился, если был передан частично
-    message: partialUpdateData.callback_query?.message
-      ? ({
-          ...baseMessage,
-          ...partialUpdateData.callback_query.message,
-        } as Message.TextMessage)
-      : baseMessage,
-  };
-
-  // --- Build Update --- (Теперь используем finalCallbackQuery)
-  const mockUpdate: Update.CallbackQueryUpdate = {
-    update_id: 1,
-    callback_query: finalCallbackQuery,
-  };
-
-  // --- Rest of the context setup ---
-  const currentMockAdapter = new NeonAdapter() as unknown as MockNeonAdapter;
-  if (adapterMethods) {
-    Object.assign(currentMockAdapter, adapterMethods);
-  }
-  mockAdapter = currentMockAdapter;
-
-  const mockTelegram = new Telegraf("fake-token").telegram;
-  const mockBotInfo = {
-    id: 1,
-    is_bot: true,
-    first_name: "TestBot",
-    username: "TestBot",
-  } as any;
-
-  const ctx = new Context(
-    mockUpdate,
-    mockTelegram,
-    mockBotInfo
-  ) as ScraperBotContext;
-
-  ctx.storage = mockAdapter as unknown as NeonAdapter;
-
-  // Используем SceneContextScene
-  ctx.scene = {
-    enter: jest.fn(),
-    leave: jest.fn(),
-    reenter: jest.fn(),
-    session: {
-      __scenes: {},
-      step: sceneSession?.step ?? ScraperSceneStep.PROJECT_LIST,
-      currentProjectId: sceneSession?.currentProjectId ?? undefined,
-      ...(sceneSession ?? {}),
-    } as ScraperSceneSessionData,
-    current: projectScene as any,
-    state: {},
-    ctx: ctx,
-    scenes: new Map(),
-    options: undefined,
-    parent: undefined,
-    ttl: undefined,
-    steps: undefined,
-    cursor: 0,
-    wizard: undefined,
-    reset: jest.fn(),
-    leaving: false,
-    // Добавим методы, если они нужны для SceneContextScene
-  } as unknown as Scenes.SceneContextScene<
-    ScraperBotContext,
-    ScraperSceneSessionData
-  >;
-
-  ctx.reply = jest.fn();
-  ctx.answerCbQuery = jest.fn();
-  ctx.editMessageText = jest.fn();
-  ctx.match = null;
-
-  return ctx;
-};
-
-describe("Project Scene - Action Handlers Unit Tests", () => {
   beforeEach(() => {
-    jest.restoreAllMocks();
-    mockConsoleError = jest.fn();
-    console.error = mockConsoleError;
-    // mockAdapter инициализируется в createTestContext для каждого теста
+    // Создаем мок для хранилища
+    mockStorage = {
+      initialize: jest.fn().mockResolvedValue(undefined),
+      getProjectById: jest.fn(),
+      close: jest.fn().mockResolvedValue(undefined),
+    };
+
+    // Создаем мок для контекста
+    ctx = {
+      reply: jest.fn().mockResolvedValue(undefined),
+      answerCbQuery: jest.fn().mockResolvedValue(true),
+      scene: {
+        session: {},
+        leave: jest.fn(),
+        reenter: jest.fn(),
+        enter: jest.fn(),
+      },
+      storage: mockStorage,
+      callbackQuery: {},
+      match: [],
+    };
   });
 
   afterEach(() => {
-    // console.error = originalConsoleError;
+    jest.clearAllMocks();
   });
 
-  // Тест для handleExitSceneAction
-  it("should leave the scene on 'exit_scene' action", async () => {
-    const ctx = createTestContext({
-      callback_query: { data: "exit_scene" },
+  describe("handleExitSceneAction", () => {
+    it("should leave scene and show message", async () => {
+      // Вызываем обработчик
+      await handleExitSceneAction(ctx);
+      
+      // Проверяем, что был вызван метод reply с сообщением
+      expect(ctx.reply).toHaveBeenCalledWith("Вы вышли из меню проектов.");
+      
+      // Проверяем, что был вызван метод leave
+      expect(ctx.scene.leave).toHaveBeenCalled();
+      
+      // Проверяем, что был вызван метод answerCbQuery
+      expect(ctx.answerCbQuery).toHaveBeenCalled();
     });
-    await handleExitSceneAction(ctx);
-    expect(ctx.answerCbQuery).toHaveBeenCalled();
-    expect(ctx.scene.leave).toHaveBeenCalledTimes(1);
-  });
 
-  // Тест для handleCreateProjectAction
-  it("should prompt for project name on 'create_project' action", async () => {
-    const ctx = createTestContext(
-      { callback_query: { data: "create_project" } },
-      { step: undefined } // Начальное состояние шага
-    );
-    await handleCreateProjectAction(ctx);
-    expect(ctx.answerCbQuery).toHaveBeenCalledTimes(1);
-    expect(ctx.reply).toHaveBeenCalledWith(
-      "Введите название нового проекта (минимум 3 символа):"
-    );
-    expect(ctx.scene.session.step).toBe(ScraperSceneStep.CREATE_PROJECT);
-  });
-
-  // Тест для handleBackToProjectsAction
-  it("should re-enter the scene on 'back_to_projects' action", async () => {
-    const ctx = createTestContext({
-      callback_query: { data: "back_to_projects" },
+    it("should not call answerCbQuery if callbackQuery is undefined", async () => {
+      // Устанавливаем callbackQuery в undefined
+      ctx.callbackQuery = undefined;
+      
+      // Вызываем обработчик
+      await handleExitSceneAction(ctx);
+      
+      // Проверяем, что был вызван метод reply с сообщением
+      expect(ctx.reply).toHaveBeenCalledWith("Вы вышли из меню проектов.");
+      
+      // Проверяем, что был вызван метод leave
+      expect(ctx.scene.leave).toHaveBeenCalled();
+      
+      // Проверяем, что не был вызван метод answerCbQuery
+      expect(ctx.answerCbQuery).not.toHaveBeenCalled();
     });
-    await handleBackToProjectsAction(ctx);
-    expect(ctx.answerCbQuery).toHaveBeenCalledTimes(1);
-    expect(ctx.scene.reenter).toHaveBeenCalledTimes(1);
   });
 
-  // Тест для handleSelectProjectAction (успешный случай)
-  it("should show project menu if project exists on project_(\d+) action", async () => {
-    const projectId = 789;
-    const mockProject: Project = {
-      id: projectId,
-      name: "Selected Project",
-      user_id: 123,
-      created_at: new Date().toISOString(),
-      is_active: true,
-    };
-    const ctx = createTestContext(
-      { callback_query: { data: `project_${projectId}` } },
-      {},
-      {
-        initialize: jest.fn().mockResolvedValue(undefined),
-        getProjectById: jest.fn().mockResolvedValue(mockProject),
-      }
-    );
-    // Устанавливаем ctx.match вручную, так как это делается middleware в Telegraf
-    ctx.match = [
-      `project_${projectId}`,
-      projectId.toString(),
-    ] as RegExpExecArray;
+  describe("handleCreateProjectAction", () => {
+    it("should set step and show message", async () => {
+      // Вызываем обработчик
+      await handleCreateProjectAction(ctx);
+      
+      // Проверяем, что был установлен правильный шаг в сессии
+      expect(ctx.scene.session.step).toBe(ScraperSceneStep.CREATE_PROJECT);
+      
+      // Проверяем, что был вызван метод reply с сообщением
+      expect(ctx.reply).toHaveBeenCalledWith(
+        "Введите название нового проекта (например, 'Клиника Аврора МСК'):",
+        expect.anything()
+      );
+      
+      // Проверяем, что был вызван метод answerCbQuery
+      expect(ctx.answerCbQuery).toHaveBeenCalled();
+    });
 
-    await handleSelectProjectAction(ctx);
-
-    expect(mockAdapter.initialize).toHaveBeenCalledTimes(1);
-    expect(mockAdapter.getProjectById).toHaveBeenCalledWith(projectId);
-    expect(ctx.reply).toHaveBeenCalledWith(
-      `Проект "${mockProject.name}". Выберите действие:`,
-      expect.any(Object) // Проверка клавиатуры
-    );
+    it("should not call answerCbQuery if callbackQuery is undefined", async () => {
+      // Устанавливаем callbackQuery в undefined
+      ctx.callbackQuery = undefined;
+      
+      // Вызываем обработчик
+      await handleCreateProjectAction(ctx);
+      
+      // Проверяем, что был установлен правильный шаг в сессии
+      expect(ctx.scene.session.step).toBe(ScraperSceneStep.CREATE_PROJECT);
+      
+      // Проверяем, что был вызван метод reply с сообщением
+      expect(ctx.reply).toHaveBeenCalledWith(
+        "Введите название нового проекта (например, 'Клиника Аврора МСК'):",
+        expect.anything()
+      );
+      
+      // Проверяем, что не был вызван метод answerCbQuery
+      expect(ctx.answerCbQuery).not.toHaveBeenCalled();
+    });
   });
 
-  // Тест для handleSelectProjectAction (проект не найден)
-  it("should show error and re-enter if project not found on project_(\d+) action", async () => {
-    const projectId = 101;
-    const ctx = createTestContext(
-      { callback_query: { data: `project_${projectId}` } },
-      {},
-      {
-        initialize: jest.fn().mockResolvedValue(undefined),
-        getProjectById: jest.fn().mockResolvedValue(null), // Проект не найден
-      }
-    );
-    ctx.match = [
-      `project_${projectId}`,
-      projectId.toString(),
-    ] as RegExpExecArray;
+  describe("handleBackToProjectsAction", () => {
+    it("should reenter scene", async () => {
+      // Вызываем обработчик
+      await handleBackToProjectsAction(ctx);
+      
+      // Проверяем, что был вызван метод answerCbQuery
+      expect(ctx.answerCbQuery).toHaveBeenCalled();
+      
+      // Проверяем, что был вызван метод reenter
+      expect(ctx.scene.reenter).toHaveBeenCalled();
+    });
 
-    await handleSelectProjectAction(ctx);
-
-    expect(mockAdapter.getProjectById).toHaveBeenCalledWith(projectId);
-    expect(ctx.reply).toHaveBeenCalledWith(
-      "Проект не найден. Возможно, он был удален."
-    );
-    expect(ctx.scene.reenter).toHaveBeenCalledTimes(1);
+    it("should not call answerCbQuery if callbackQuery is undefined", async () => {
+      // Устанавливаем callbackQuery в undefined
+      ctx.callbackQuery = undefined;
+      
+      // Вызываем обработчик
+      await handleBackToProjectsAction(ctx);
+      
+      // Проверяем, что не был вызван метод answerCbQuery
+      expect(ctx.answerCbQuery).not.toHaveBeenCalled();
+      
+      // Проверяем, что был вызван метод reenter
+      expect(ctx.scene.reenter).toHaveBeenCalled();
+    });
   });
 
-  // Тест для handleManageHashtagsAction
-  it("should enter hashtag scene on manage_hashtags_(\d+) action", async () => {
-    const projectId = 202;
-    const ctx = createTestContext(
-      { callback_query: { data: `manage_hashtags_${projectId}` } },
-      { projectId: undefined } // Убедимся, что projectId в сессии будет установлен
-    );
-    ctx.match = [
-      `manage_hashtags_${projectId}`,
-      projectId.toString(),
-    ] as RegExpExecArray;
+  describe("handleProjectSelectionAction", () => {
+    it("should show project menu if project exists", async () => {
+      // Устанавливаем match для projectId
+      ctx.match = ["project_123", "123"];
+      
+      // Мокируем результат запроса getProjectById
+      const mockProject = { id: 123, user_id: 1, name: "Test Project" };
+      mockStorage.getProjectById.mockResolvedValue(mockProject);
+      
+      // Вызываем обработчик
+      await handleProjectSelectionAction(ctx);
+      
+      // Проверяем, что были вызваны методы storage
+      expect(mockStorage.initialize).toHaveBeenCalled();
+      expect(mockStorage.getProjectById).toHaveBeenCalledWith(123);
+      expect(mockStorage.close).toHaveBeenCalled();
+      
+      // Проверяем, что были установлены правильные значения в сессии
+      expect(ctx.scene.session.currentProjectId).toBe(123);
+      expect(ctx.scene.session.step).toBe(ScraperSceneStep.PROJECT_MENU);
+      
+      // Проверяем, что был вызван метод reply с сообщением
+      expect(ctx.reply).toHaveBeenCalledWith(
+        'Проект "Test Project". Что вы хотите сделать?',
+        expect.anything()
+      );
+      
+      // Проверяем, что был вызван метод answerCbQuery
+      expect(ctx.answerCbQuery).toHaveBeenCalled();
+    });
 
-    await handleManageHashtagsAction(ctx);
+    it("should reenter scene if project does not exist", async () => {
+      // Устанавливаем match для projectId
+      ctx.match = ["project_123", "123"];
+      
+      // Мокируем результат запроса getProjectById
+      mockStorage.getProjectById.mockResolvedValue(null);
+      
+      // Вызываем обработчик
+      await handleProjectSelectionAction(ctx);
+      
+      // Проверяем, что были вызваны методы storage
+      expect(mockStorage.initialize).toHaveBeenCalled();
+      expect(mockStorage.getProjectById).toHaveBeenCalledWith(123);
+      expect(mockStorage.close).toHaveBeenCalled();
+      
+      // Проверяем, что был вызван метод reply с сообщением
+      expect(ctx.reply).toHaveBeenCalledWith("Проект не найден. Возможно, он был удален.");
+      
+      // Проверяем, что был вызван метод reenter
+      expect(ctx.scene.reenter).toHaveBeenCalled();
+      
+      // Проверяем, что был вызван метод answerCbQuery
+      expect(ctx.answerCbQuery).toHaveBeenCalled();
+    });
 
-    expect(ctx.scene.session.projectId).toBe(projectId);
-    expect(ctx.answerCbQuery).toHaveBeenCalledTimes(1);
-    expect(ctx.scene.enter).toHaveBeenCalledWith("instagram_scraper_hashtags");
+    it("should handle invalid projectId", async () => {
+      // Устанавливаем match с невалидным projectId
+      ctx.match = ["project_invalid", "invalid"];
+      
+      // Вызываем обработчик
+      await handleProjectSelectionAction(ctx);
+      
+      // Проверяем, что был вызван метод answerCbQuery с сообщением об ошибке
+      expect(ctx.answerCbQuery).toHaveBeenCalledWith("Ошибка: неверный ID проекта.");
+      
+      // Проверяем, что был вызван метод reenter
+      expect(ctx.scene.reenter).toHaveBeenCalled();
+      
+      // Проверяем, что не были вызваны методы storage
+      expect(mockStorage.initialize).not.toHaveBeenCalled();
+    });
+
+    it("should handle error when getProjectById throws", async () => {
+      // Устанавливаем match для projectId
+      ctx.match = ["project_123", "123"];
+      
+      // Мокируем ошибку в запросе getProjectById
+      mockStorage.getProjectById.mockRejectedValue(new Error("Database error"));
+      
+      // Вызываем обработчик
+      await handleProjectSelectionAction(ctx);
+      
+      // Проверяем, что были вызваны методы storage
+      expect(mockStorage.initialize).toHaveBeenCalled();
+      expect(mockStorage.getProjectById).toHaveBeenCalledWith(123);
+      expect(mockStorage.close).toHaveBeenCalled();
+      
+      // Проверяем, что был вызван метод reply с сообщением об ошибке
+      expect(ctx.reply).toHaveBeenCalledWith("Ошибка при выборе проекта.");
+      
+      // Проверяем, что был вызван метод answerCbQuery
+      expect(ctx.answerCbQuery).toHaveBeenCalled();
+    });
+  });
+
+  describe("handleManageHashtagsAction", () => {
+    it("should enter hashtags scene with projectId", async () => {
+      // Устанавливаем match для projectId
+      ctx.match = ["manage_hashtags_123", "123"];
+      
+      // Вызываем обработчик
+      await handleManageHashtagsAction(ctx);
+      
+      // Проверяем, что был установлен правильный projectId в сессии
+      expect(ctx.scene.session.currentProjectId).toBe(123);
+      
+      // Проверяем, что был вызван метод answerCbQuery
+      expect(ctx.answerCbQuery).toHaveBeenCalled();
+      
+      // Проверяем, что был вызван метод enter с правильными параметрами
+      expect(ctx.scene.enter).toHaveBeenCalledWith("instagram_scraper_hashtags", { projectId: 123 });
+    });
+
+    it("should handle invalid projectId", async () => {
+      // Устанавливаем match с невалидным projectId
+      ctx.match = ["manage_hashtags_invalid", "invalid"];
+      
+      // Вызываем обработчик
+      await handleManageHashtagsAction(ctx);
+      
+      // Проверяем, что был вызван метод answerCbQuery с сообщением об ошибке
+      expect(ctx.answerCbQuery).toHaveBeenCalledWith("Ошибка: неверный ID проекта.");
+      
+      // Проверяем, что был вызван метод reenter
+      expect(ctx.scene.reenter).toHaveBeenCalled();
+      
+      // Проверяем, что не был вызван метод enter
+      expect(ctx.scene.enter).not.toHaveBeenCalled();
+    });
   });
 });

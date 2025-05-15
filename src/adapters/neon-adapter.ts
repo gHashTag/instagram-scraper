@@ -1,6 +1,6 @@
 import { Pool, QueryResult } from "pg";
+import { StorageAdapter } from "../types";
 import {
-  StorageAdapter,
   User,
   Project,
   Competitor,
@@ -8,7 +8,13 @@ import {
   ReelContent,
   ReelsFilter,
   ParsingRunLog,
-} from "@/types";
+} from "../schemas";
+import {
+  validateUser,
+  validateProject,
+  validateProjects,
+  validateCompetitors,
+} from "../utils/validation-zod";
 
 /**
  * Адаптер для работы с базой данных Neon (PostgreSQL)
@@ -56,11 +62,18 @@ export class NeonAdapter implements StorageAdapter {
   }
 
   async getProjectsByUserId(userId: number): Promise<Project[]> {
-    const res = await this.pool.query(
-      "SELECT * FROM projects WHERE user_id = $1",
-      [userId]
-    );
-    return res.rows;
+    try {
+      const res = await this.pool.query(
+        "SELECT * FROM projects WHERE user_id = $1",
+        [userId]
+      );
+
+      // Валидируем данные с помощью Zod
+      return validateProjects(res.rows);
+    } catch (error) {
+      console.error("Ошибка при получении проектов из Neon:", error);
+      return [];
+    }
   }
 
   async getProjectById(projectId: number): Promise<Project | null> {
@@ -69,21 +82,39 @@ export class NeonAdapter implements StorageAdapter {
       const res = await pool.query("SELECT * FROM Projects WHERE id = $1", [
         projectId,
       ]);
-      return res.rows[0] as Project | null;
+
+      if (!res.rows[0]) {
+        return null;
+      }
+
+      // Валидируем данные с помощью Zod
+      return validateProject(res.rows[0]);
     } catch (error) {
       console.error("Ошибка при получении проекта из Neon:", error);
-      throw new Error(
-        `Ошибка при получении проекта: ${error instanceof Error ? error.message : String(error)}`
-      );
+      return null;
     }
   }
 
   async createProject(userId: number, name: string): Promise<Project> {
-    const res = await this.pool.query(
-      "INSERT INTO projects (user_id, name) VALUES ($1, $2) RETURNING *",
-      [userId, name]
-    );
-    return res.rows[0];
+    try {
+      const res = await this.pool.query(
+        "INSERT INTO projects (user_id, name) VALUES ($1, $2) RETURNING *",
+        [userId, name]
+      );
+
+      // Валидируем данные с помощью Zod
+      const validatedProject = validateProject(res.rows[0]);
+      if (!validatedProject) {
+        throw new Error("Не удалось валидировать созданный проект");
+      }
+
+      return validatedProject;
+    } catch (error) {
+      console.error("Ошибка при создании проекта в Neon:", error);
+      throw new Error(
+        `Ошибка при создании проекта: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
   }
 
   async getCompetitorAccounts(
@@ -96,54 +127,76 @@ export class NeonAdapter implements StorageAdapter {
         ? "SELECT * FROM Competitors WHERE project_id = $1 AND is_active = true"
         : "SELECT * FROM Competitors WHERE project_id = $1";
       const res = await pool.query(query, [projectId]);
-      return res.rows as Competitor[];
+
+      // Валидируем данные с помощью Zod
+      return validateCompetitors(res.rows);
     } catch (error) {
       console.error("Ошибка при получении конкурентов из Neon:", error);
-      throw new Error(
-        `Ошибка при получении конкурентов: ${error instanceof Error ? error.message : String(error)}`
-      );
+      return [];
     }
   }
 
   async getCompetitorsByProjectId(projectId: number): Promise<Competitor[]> {
-    const res = await this.pool.query(
-      "SELECT * FROM competitors WHERE project_id = $1",
-      [projectId]
-    );
-    return res.rows;
-  }
-
-  async deleteCompetitorAccount(
-    projectId: number,
-    username: string
-  ): Promise<boolean> {
-    const pool = this.ensureConnection();
     try {
-      const res = await pool.query(
-        "DELETE FROM Competitors WHERE project_id = $1 AND username = $2 RETURNING id",
-        [projectId, username]
+      const res = await this.pool.query(
+        "SELECT * FROM competitors WHERE project_id = $1",
+        [projectId]
       );
-      return res.rowCount !== null && res.rowCount > 0;
+
+      // Валидируем данные с помощью Zod
+      return validateCompetitors(res.rows);
     } catch (error) {
-      console.error("Ошибка при удалении конкурента из Neon:", error);
-      return false;
+      console.error("Ошибка при получении конкурентов из Neon:", error);
+      return [];
     }
   }
 
+  // Метод перенесен в конец файла
+
   async getUserByTelegramId(telegramId: number): Promise<User | null> {
-    const res = await this.pool.query(
-      "SELECT * FROM users WHERE telegram_id = $1",
-      [telegramId]
-    );
-    return res.rows[0] || null;
+    try {
+      const res = await this.pool.query(
+        "SELECT * FROM users WHERE telegram_id = $1",
+        [telegramId]
+      );
+
+      if (!res.rows[0]) {
+        return null;
+      }
+
+      // Валидируем данные с помощью Zod
+      return validateUser(res.rows[0]);
+    } catch (error) {
+      console.error("Ошибка при получении пользователя из Neon:", error);
+      return null;
+    }
   }
 
-  async createUser(telegramId: number, username?: string): Promise<User> {
-    const res = await this.pool.query(
-      "INSERT INTO users (telegram_id, username) VALUES ($1, $2) RETURNING *",
-      [telegramId, username || null]
-    );
-    return res.rows[0];
+  async createUser(
+    telegramId: number,
+    username?: string,
+    firstName?: string,
+    lastName?: string
+  ): Promise<User> {
+    try {
+      const res = await this.pool.query(
+        "INSERT INTO users (telegram_id, username, first_name, last_name) VALUES ($1, $2, $3, $4) RETURNING *",
+        [telegramId, username || null, firstName || null, lastName || null]
+      );
+
+      // Валидируем данные с помощью Zod
+      const validatedUser = validateUser(res.rows[0]);
+      if (!validatedUser) {
+        throw new Error("Не удалось валидировать созданного пользователя");
+      }
+
+      return validatedUser;
+    } catch (error) {
+      console.error("Ошибка при создании пользователя в Neon:", error);
+      throw new Error(
+        `Ошибка при создании пользователя: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
   }
 
   async getTrackingHashtags(
@@ -159,12 +212,7 @@ export class NeonAdapter implements StorageAdapter {
     return res.rows;
   }
 
-  async removeHashtag(projectId: number, hashtag: string): Promise<void> {
-    await this.pool.query(
-      "DELETE FROM hashtags WHERE project_id = $1 AND hashtag = $2",
-      [projectId, hashtag]
-    );
-  }
+  // Метод перенесен в конец файла
 
   async saveReelsContent(content: any): Promise<void> {
     await this.pool.query(
@@ -312,6 +360,14 @@ export class NeonAdapter implements StorageAdapter {
     }
   }
 
+  // Удаление хештега
+  async removeHashtag(projectId: number, hashtag: string): Promise<void> {
+    await this.pool.query(
+      "DELETE FROM hashtags WHERE project_id = $1 AND hashtag = $2",
+      [projectId, hashtag]
+    );
+  }
+
   // Добавление аккаунта конкурента
   async addCompetitorAccount(
     projectId: number,
@@ -330,6 +386,52 @@ export class NeonAdapter implements StorageAdapter {
     } catch (error) {
       console.error("Error adding competitor account:", error);
       return null;
+    }
+  }
+
+  // Удаление аккаунта конкурента
+  async deleteCompetitorAccount(
+    projectId: number,
+    username: string
+  ): Promise<boolean> {
+    const pool = this.ensureConnection();
+    try {
+      const res = await pool.query(
+        "DELETE FROM Competitors WHERE project_id = $1 AND username = $2 RETURNING id",
+        [projectId, username]
+      );
+      return res.rowCount !== null && res.rowCount > 0;
+    } catch (error) {
+      console.error("Ошибка при удалении конкурента из Neon:", error);
+      return false;
+    }
+  }
+
+  async findUserByTelegramIdOrCreate(
+    telegramId: number,
+    username?: string,
+    firstName?: string,
+    lastName?: string
+  ): Promise<User> {
+    try {
+      let user = await this.getUserByTelegramId(telegramId);
+      if (user) {
+        // TODO: Опционально обновить username, firstName, lastName, если они изменились
+        return user;
+      }
+      // Если пользователь не найден, создаем нового
+      user = await this.createUser(telegramId, username, firstName, lastName);
+      return user;
+    } catch (error) {
+      console.error(
+        "Ошибка в findUserByTelegramIdOrCreate в NeonAdapter:",
+        error
+      );
+      throw new Error(
+        `Ошибка при поиске или создании пользователя в Neon: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
     }
   }
 }

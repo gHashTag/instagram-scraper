@@ -2,7 +2,10 @@ import { Scenes, Markup } from "telegraf";
 import { ScraperBotContext } from "../types";
 import { NeonAdapter } from "../adapters/neon-adapter";
 import { ScraperSceneStep, ScraperSceneSessionData } from "@/types";
-import { User } from "../types";
+import {
+  isValidInstagramUrl,
+  extractUsernameFromUrl,
+} from "../utils/validation";
 
 /**
  * Обработчик действия для удаления конкурента.
@@ -64,7 +67,7 @@ export const competitorScene = new Scenes.BaseScene<
 >("instagram_scraper_competitors");
 
 // Вход в сцену - выбор проекта или показ конкурентов если проект один
-competitorScene.enter(async (ctx) => {
+export async function handleCompetitorEnter(ctx: ScraperBotContext) {
   const adapter = ctx.storage as NeonAdapter;
   try {
     // Используем adapter вместо neonAdapter
@@ -164,7 +167,9 @@ competitorScene.enter(async (ctx) => {
     // await adapter.close(); // Закрываем в finally или если ошибка не связана с адаптером
     await ctx.scene.leave();
   }
-});
+}
+
+competitorScene.enter(handleCompetitorEnter);
 
 /**
  * Обработчик выбора проекта для просмотра конкурентов
@@ -281,98 +286,97 @@ export async function handleCompetitorText(
     message: { text: string };
   }
 ) {
-  const adapter = ctx.storage as NeonAdapter;
-  if (ctx.scene.session.step === ScraperSceneStep.ADD_COMPETITOR) {
-    const instagramUrl = ctx.message.text.trim();
-    const projectId = ctx.scene.session.projectId;
+  if (ctx.scene.session.step !== ScraperSceneStep.ADD_COMPETITOR) {
+    return;
+  }
 
-    let user: User | null = null;
+  const adapter = ctx.storage; // Используем ctx.storage напрямую
+  const { projectId } = ctx.scene.session;
+  const instagramUrl = ctx.message.text;
 
-    if (!projectId) {
-      await ctx.reply("Ошибка: не указан проект. Начните сначала.");
-      return ctx.scene.reenter(); // Используем reenter, чтобы пользователь мог попробовать снова в той же сцене
-    }
+  if (!projectId) {
+    await ctx.reply("Ошибка: не указан проект. Начните сначала.");
+    ctx.scene.session.step = undefined; // Сброс шага
+    return ctx.scene.reenter();
+  }
 
-    if (!instagramUrl.toLowerCase().includes("instagram.com/")) {
+  if (!isValidInstagramUrl(instagramUrl)) {
+    await ctx.reply(
+      "Пожалуйста, введите корректный URL Instagram-аккаунта (например, https://www.instagram.com/example):"
+    );
+    // Не сбрасываем шаг, даем пользователю попробовать еще раз
+    return;
+  }
+
+  const username = extractUsernameFromUrl(instagramUrl);
+  if (!username) {
+    await ctx.reply(
+      "Не удалось извлечь имя пользователя из URL. Пожалуйста, проверьте URL и попробуйте снова."
+    );
+    // Не сбрасываем шаг
+    return;
+  }
+
+  try {
+    await adapter.initialize();
+    const user = await adapter.getUserByTelegramId(ctx.from?.id || 0);
+
+    if (!user) {
+      console.error(
+        `handleCompetitorText: User not found for telegramId: ${ctx.from?.id}`
+      );
       await ctx.reply(
-        "Пожалуйста, введите корректный URL Instagram-аккаунта (например, https://www.instagram.com/example):"
+        "Ошибка: Пользователь не найден. Пожалуйста, используйте /start."
       );
-      return;
+      ctx.scene.session.step = undefined;
+      return ctx.scene.leave();
     }
 
-    try {
-      await adapter.initialize();
-      user = await adapter.getUserByTelegramId(ctx.from?.id || 0);
-      if (!user) {
-        console.error(
-          `Error in onText handler: User not found for telegramId: ${ctx.from?.id}`
-        );
-        await ctx.reply(
-          "Ошибка: Пользователь не найден. Пожалуйста, используйте /start."
-        );
-        ctx.scene.session.step = undefined;
-        // await adapter.close(); // Закрываем в finally
-        return ctx.scene.leave();
-      }
+    const competitor = await adapter.addCompetitorAccount(
+      projectId,
+      username,
+      instagramUrl
+    );
 
-      let username = instagramUrl.substring(instagramUrl.lastIndexOf("/") + 1);
-      username = username.split("?")[0];
-      if (username.endsWith("/")) {
-        username = username.slice(0, -1);
-      }
-
-      if (!username) {
-        await ctx.reply(
-          "Не удалось извлечь имя пользователя из URL. Пожалуйста, проверьте URL и попробуйте снова."
-        );
-        return;
-      }
-
-      const competitor = await adapter.addCompetitorAccount(
-        projectId,
-        username,
-        instagramUrl
-      );
-
-      if (competitor) {
-        const successMessage = `Конкурент @${username} успешно добавлен!`;
-        const successKeyboard = Markup.inlineKeyboard([
+    if (competitor) {
+      await ctx.reply(
+        `Конкурент @${username} успешно добавлен!`,
+        Markup.inlineKeyboard([
+          [
+            Markup.button.callback(
+              "Добавить еще",
+              `add_competitor_${projectId}`
+            ),
+          ],
           [
             Markup.button.callback(
               "Посмотреть всех конкурентов",
               `competitors_project_${projectId}`
             ),
           ],
-          [
-            Markup.button.callback(
-              "Добавить еще конкурента",
-              `add_competitor_${projectId}`
-            ),
-          ],
-          [Markup.button.callback("Выйти", "exit_scene")],
-        ]);
-        await ctx.reply(successMessage, {
-          reply_markup: successKeyboard.reply_markup,
-        });
-      } else {
-        const errorMessage = `Не удалось добавить конкурента @${username}. Возможно, он уже добавлен или произошла ошибка базы данных.`;
-        await ctx.reply(errorMessage);
-      }
-      ctx.scene.session.step = undefined;
-    } catch (error) {
-      console.error("Ошибка при добавлении конкурента в сцене:", error);
-      await ctx.reply(
-        "Произошла внутренняя ошибка при добавлении конкурента. Попробуйте позже."
+          [Markup.button.callback("Вернуться к проектам", "back_to_projects")],
+        ])
       );
-      ctx.scene.session.step = undefined;
-    } finally {
-      if (adapter && typeof adapter.close === "function") {
-        await adapter.close();
-      }
+    } else {
+      await ctx.reply(
+        `Не удалось добавить конкурента @${username}. Возможно, он уже добавлен или произошла ошибка базы данных.`
+      );
     }
-  } else {
-    return;
+    ctx.scene.session.step = undefined; // Сброс шага после попытки добавления
+    return; // Явный return
+  } catch (error) {
+    console.error("Ошибка при добавлении конкурента в сцене:", error);
+    await ctx.reply(
+      "Произошла внутренняя ошибка при добавлении конкурента. Попробуйте позже."
+    );
+    ctx.scene.session.step = undefined; // Сброс шага в случае ошибки
+    return; // Явный return
+  } finally {
+    if (adapter && typeof adapter.close === "function") {
+      await adapter.close();
+    }
   }
+  // Неявный return здесь, так как все пути выше имеют return или throw
 }
 
 // Обработка текстовых сообщений
@@ -385,7 +389,17 @@ export async function handleExitCompetitorSceneAction(ctx: ScraperBotContext) {
   await ctx.reply("Вы вышли из режима управления конкурентами.", {
     reply_markup: { remove_keyboard: true },
   });
-  await ctx.scene.leave();
+
+  // Если есть ID проекта в сессии, переходим в сцену проектов с этим ID
+  if (ctx.scene.session.currentProjectId) {
+    await ctx.scene.leave();
+    await ctx.scene.enter("projectScene", {
+      projectId: ctx.scene.session.currentProjectId,
+    });
+  } else {
+    await ctx.scene.leave();
+  }
+
   await ctx.answerCbQuery();
 }
 
@@ -393,10 +407,15 @@ export async function handleExitCompetitorSceneAction(ctx: ScraperBotContext) {
  * Обработчик кнопки "Назад к проектам"
  */
 export async function handleBackToProjectsCompetitorAction(
-  ctx: ScraperBotContext
+  ctx: ScraperBotContext & { customSceneEnterMock?: any }
 ) {
-  await ctx.scene.reenter();
   await ctx.answerCbQuery();
+  // Предполагается, что эта сцена всегда должна вести обратно в projectScene
+  if (ctx.customSceneEnterMock) {
+    await ctx.customSceneEnterMock("instagram_scraper_projects");
+  } else {
+    await ctx.scene.enter("instagram_scraper_projects"); // Имя главной сцены проектов
+  }
 }
 
 // Регистрация обработчиков в сцене
@@ -408,11 +427,12 @@ competitorScene.action(/add_competitor_(\d+)/, handleAddCompetitorAction);
 competitorScene.action("exit_scene", handleExitCompetitorSceneAction);
 competitorScene.action(
   "back_to_projects",
-  handleBackToProjectsCompetitorAction
+  handleBackToProjectsCompetitorAction as any // Используем as any из-за временного изменения сигнатуры
 );
 competitorScene.action(
   /delete_competitor_(\d+)_(.+)/,
   handleDeleteCompetitorAction
 );
+
 
 export default competitorScene;

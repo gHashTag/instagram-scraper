@@ -10,6 +10,9 @@
   - [Локальная база данных SQLite](#локальная-база-данных-sqlite)
   - [Мокирование Apify API](#мокирование-apify-api)
   - [Автоматизированное тестирование](#автоматизированное-тестирование)
+    - [Запуск тестов](#запуск-всех-тестов)
+    - [Структура тестов](#структура-тестов)
+    - [Фреймворк для тестирования Telegram-сцен](#фреймворк-для-тестирования-telegram-сцен)
   - [Визуальная панель разработки](#визуальная-панель-разработки)
 - [Доступные инструменты](#доступные-инструменты)
 - [Структура кода](#структура-кода)
@@ -171,16 +174,58 @@ bun run scripts/build-and-test.sh
 bash scripts/test-integration.sh
 ```
 
+#### Запуск тестов для Telegram-сцен
+
+```bash
+# Запуск тестов для Telegram-сцен
+bash scripts/test-telegram-scenes.sh
+```
+
 #### Структура тестов
 
 - `__tests__/unit/` - модульные тесты отдельных компонентов
+  - `__tests__/unit/adapters/` - тесты для адаптеров хранилища
+  - `__tests__/unit/scenes/` - тесты для Telegram-сцен
+  - `__tests__/unit/utils/` - тесты для утилит
 - `__tests__/integration/` - интеграционные тесты взаимодействия компонентов
 - `__tests__/mocks/` - мок-сервисы для тестирования
+- `__tests__/helpers/` - вспомогательные инструменты для тестирования
+  - `__tests__/helpers/telegram/` - фреймворк для тестирования Telegram-сцен
+
+#### Фреймворк для тестирования Telegram-сцен
+
+Для тестирования Telegram-сцен в проекте разработан специальный фреймворк, который упрощает создание и поддержку тестов. Фреймворк предоставляет инструменты для создания моков, тестирования обработчиков и проверки состояния сцены.
+
+Подробная документация по фреймворку доступна в следующих файлах:
+
+- [Общая документация по тестированию](./src/__tests__/README.md) - структура тестов, инструменты, команды и паттерны
+- [Паттерны тестирования Telegram-сцен](./src/__tests__/TESTING_PATTERNS.md) - подробное описание паттернов тестирования сцен
+- [Фреймворк для тестирования Telegram-сцен](./src/__tests__/helpers/telegram/README.md) - документация по фреймворку для тестирования сцен
+
+#### Пример теста для Telegram-сцены
+
+```typescript
+import { describe, it, expect, beforeEach } from "bun:test";
+import { SceneTester, generateEnterHandlerTests } from "../../helpers/telegram";
+import { ProjectScene } from "../../../scenes/project-scene";
+
+describe("ProjectScene - Enter Handler", () => {
+  // Создаем тестер сцены
+  const sceneTester = new SceneTester({
+    sceneName: "ProjectScene",
+    sceneFilePath: "../../../scenes/project-scene",
+    sceneConstructor: ProjectScene
+  });
+
+  // Генерируем тесты для обработчика входа в сцену
+  generateEnterHandlerTests(sceneTester);
+});
+```
 
 #### Пример интеграционного теста
 
 ```typescript
-import { describe, it, expect, beforeAll, afterAll } from "vitest"
+import { describe, it, expect, beforeAll, afterAll } from "bun:test"
 import { SqliteAdapter } from "../../adapters/sqlite-adapter"
 import fs from "fs"
 import path from "path"
@@ -242,11 +287,23 @@ bun run scripts/dev-dashboard.ts
 - `dev-dashboard.ts` - Запуск панели разработки
 - `build-and-test.sh` - Сборка и тестирование модуля
 - `test-integration.sh` - Запуск интеграционных тестов
+- `test-telegram-scenes.sh` - Запуск тестов для Telegram-сцен
+- `generate-telegram-tests.ts` - Генерация тестов для Telegram-сцен
 
 ### Адаптеры и сервисы
 
 - `SqliteAdapter` - Адаптер для работы с SQLite
 - `MockApifyService` - Мок-сервис для Apify API
+
+### Инструменты для тестирования
+
+- `SceneTester` - Класс для тестирования Telegram-сцен
+- `SceneSequenceTester` - Класс для тестирования последовательностей действий
+- `createMockContext` - Функция для создания мокированного контекста Telegraf
+- `createMockAdapter` - Функция для создания мокированного адаптера хранилища
+- `generateEnterHandlerTests` - Функция для генерации тестов обработчика входа в сцену
+- `generateActionHandlerTests` - Функция для генерации тестов обработчиков действий
+- `generateTextHandlerTests` - Функция для генерации тестов обработчиков текстовых сообщений
 
 ## Структура кода
 

@@ -1,403 +1,186 @@
-import { describe, it, expect, beforeEach, afterEach, jest } from "bun:test";
-import { mock } from "bun:test";
-import { Context, Scenes, Telegraf } from "telegraf";
-import { Update } from "telegraf/types";
-import { projectScene } from "../../../scenes/project-scene";
-import {
-  ScraperBotContext,
-  ScraperSceneSessionData,
-  ScraperSceneStep,
-  User,
-  Project,
-} from "../../../types";
-import { NeonAdapter } from "../../../adapters/neon-adapter";
+import { describe, it, expect, jest, mock, beforeEach, afterEach } from "bun:test";
+import { ScraperSceneStep } from "../../../types";
+import { handleProjectEnter } from "../../../scenes/project-scene";
 
-// Мокируем модуль адаптера
-mock.module("../../../adapters/neon-adapter", () => {
+// Мокируем зависимости
+mock.module("../../../logger", () => {
   return {
-    NeonAdapter: jest.fn().mockImplementation(() => ({
-      initialize: jest.fn(),
-      getUserByTelegramId: jest.fn(),
-      getProjectsByUserId: jest.fn(),
-      getProjectById: jest.fn(),
-      createProject: jest.fn(),
-    })),
-  };
-});
-
-// Мокируем модуль сцен
-mock.module("telegraf/scenes", () => {
-  return {
-    Scenes: Scenes,
-    Context: Context,
-    Stage: {
-      middleware: jest.fn(() => (_ctx: any, next: any) => next()),
-      enter: jest.fn(),
-    },
-    BaseScene: class {
-      enter = jest.fn();
-      leave = jest.fn();
-      enterMiddleware = jest
-        .fn()
-        .mockImplementation(() => (_ctx: any, next: any) => next());
-      middleware = jest
-        .fn()
-        .mockImplementation(() => (_ctx: any, next: any) => next());
-      action = jest.fn();
-      on = jest.fn();
+    logger: {
+      info: jest.fn(),
+      error: jest.fn(),
+      warn: jest.fn(),
     },
   };
 });
 
-// Мокируем Markup
-mock.module("telegraf", () => {
-  return {
-    Telegraf: Telegraf,
-    Context: Context,
-    Scenes: Scenes,
-    Markup: {
-      button: {
-        callback: jest.fn((text, data) => ({ text, callback_data: data })),
-      },
-      inlineKeyboard: jest.fn((buttons) => ({
-        inline_keyboard: buttons,
-      })),
-      keyboard: jest.fn(),
-      removeKeyboard: jest.fn(() => ({ remove_keyboard: true })),
-      forceReply: jest.fn(),
-    },
-  };
-});
+describe("projectScene - Enter Handler", () => {
+  let ctx: any;
+  let mockStorage: any;
 
-// Определяем тип для мока адаптера
-type MockNeonAdapter = {
-  initialize: jest.Mock;
-  getUserByTelegramId: jest.Mock;
-  getProjectsByUserId: jest.Mock;
-  getProjectById: jest.Mock;
-  createProject: jest.Mock;
-};
-
-// --- Глобальные переменные для тестов ---
-let bot: Telegraf<ScraperBotContext>;
-let stage: Scenes.Stage<ScraperBotContext>;
-let mockAdapter: MockNeonAdapter;
-// Используем jest.Mock для console.error, так как spyOn нестабилен
-let mockConsoleError: jest.Mock<any>;
-
-// Функция для создания тестового контекста
-const createTestContext = (
-  update: Partial<Update> = {},
-  sceneSession?: Partial<ScraperSceneSessionData>,
-  adapterMethods?: Partial<MockNeonAdapter>
-): ScraperBotContext => {
-  const mockUpdate = {
-    update_id: 1,
-    ...update,
-  } as Update;
-
-  const currentMockAdapter = new NeonAdapter() as unknown as MockNeonAdapter;
-  if (adapterMethods) {
-    Object.assign(currentMockAdapter, adapterMethods);
-  }
-  mockAdapter = currentMockAdapter;
-
-  const mockTelegram = new Telegraf("fake-token").telegram;
-  const mockBotInfo = {
-    id: 1,
-    is_bot: true,
-    first_name: "TestBot",
-    username: "TestBot",
-  } as any;
-
-  const ctx = new Context(
-    mockUpdate,
-    mockTelegram,
-    mockBotInfo
-  ) as ScraperBotContext;
-
-  ctx.storage = mockAdapter as unknown as NeonAdapter;
-
-  ctx.scene = {
-    enter: jest.fn(),
-    leave: jest.fn(),
-    reenter: jest.fn(),
-    session: {
-      __scenes: {},
-      step: undefined,
-      currentProjectId: undefined,
-      ...sceneSession,
-    } as ScraperSceneSessionData,
-    current: projectScene as any,
-    state: {},
-    ctx: ctx,
-    scenes: new Map(),
-    options: undefined,
-    parent: undefined,
-    ttl: undefined,
-    steps: undefined,
-    cursor: 0,
-    wizard: undefined,
-    reset: jest.fn(),
-    leaving: false,
-  } as any;
-
-  ctx.reply = jest.fn();
-  ctx.answerCbQuery = jest.fn();
-
-  return ctx;
-};
-
-describe("Project Scene - Enter Handler Unit Tests", () => {
   beforeEach(() => {
-    jest.restoreAllMocks();
-    mockAdapter = new NeonAdapter() as unknown as MockNeonAdapter;
-    bot = new Telegraf<ScraperBotContext>("test-token");
-    stage = new Scenes.Stage<ScraperBotContext>([projectScene]);
-    bot.use(stage.middleware());
+    // Создаем мок для контекста
+    mockStorage = {
+      initialize: jest.fn().mockResolvedValue(undefined),
+      findUserByTelegramIdOrCreate: jest.fn(),
+      getProjectsByUserId: jest.fn(),
+      close: jest.fn().mockResolvedValue(undefined),
+    };
 
-    // Используем mock.fn() для console.error
-    mockConsoleError = jest.fn();
-    console.error = mockConsoleError;
-
-    bot.use(projectScene.middleware());
+    ctx = {
+      reply: jest.fn().mockResolvedValue(undefined),
+      from: {
+        id: 123456789,
+        username: "testuser",
+        first_name: "Test",
+        last_name: "User",
+      },
+      scene: {
+        session: {},
+        leave: jest.fn(),
+        enter: jest.fn(),
+      },
+      storage: mockStorage,
+    };
   });
 
   afterEach(() => {
-    // Восстанавливаем оригинальный console.error, если нужно, или просто проверяем вызовы
-    // console.error = originalConsoleError; // Если сохраняли оригинал
-    // mockConsoleError.mockRestore(); // Не нужно, так как это mock.fn()
+    jest.clearAllMocks();
   });
 
-  // --- Тесты для projectScene.enter ---
+  it("should leave scene if ctx.from is undefined", async () => {
+    // Устанавливаем ctx.from в undefined
+    ctx.from = undefined;
 
-  it("should initialize adapter and show 'no projects' message if user exists but has no projects", async () => {
-    const mockUser: User = {
-      id: 1,
-      telegram_id: 54321,
-      username: "test",
-      created_at: new Date().toISOString(),
-      is_active: true,
-    };
-    const ctx = createTestContext(
-      {
-        message: {
-          chat: {
-            id: 12345,
-            type: "private",
-            first_name: "Test",
-            username: "testuser",
-          },
-          from: { id: 54321, is_bot: false, first_name: "Test" },
-          message_id: 1,
-          date: Math.floor(Date.now() / 1000),
-          text: "/start",
-        },
-      },
-      {},
-      {
-        initialize: jest.fn().mockResolvedValue(undefined),
-        getUserByTelegramId: jest.fn().mockResolvedValue(mockUser),
-        getProjectsByUserId: jest.fn().mockResolvedValue([]),
-      }
-    );
+    // Вызываем обработчик входа в сцену напрямую
+    await handleProjectEnter(ctx);
 
-    const enterMiddleware = projectScene.enterMiddleware();
-    await enterMiddleware(ctx, jest.fn());
-
-    expect(mockAdapter.initialize).toHaveBeenCalledTimes(1);
-    expect(mockAdapter.getUserByTelegramId).toHaveBeenCalledWith(54321);
-    expect(mockAdapter.getProjectsByUserId).toHaveBeenCalledWith(mockUser.id);
+    // Проверяем, что был вызван метод reply с сообщением об ошибке
     expect(ctx.reply).toHaveBeenCalledWith(
-      expect.stringContaining("У вас пока нет проектов. Хотите создать новый?"),
-      expect.any(Object)
+      "Не удалось определить пользователя. Попробуйте перезапустить бота командой /start."
     );
+
+    // Проверяем, что был вызван метод leave
+    expect(ctx.scene.leave).toHaveBeenCalled();
+
+    // Проверяем, что не было вызовов к storage
+    expect(mockStorage.initialize).not.toHaveBeenCalled();
+  });
+
+  it("should show message when user has no projects", async () => {
+    // Мокируем результаты запросов
+    mockStorage.findUserByTelegramIdOrCreate.mockResolvedValue({ id: 1, telegram_id: 123456789, username: "testuser" });
+    mockStorage.getProjectsByUserId.mockResolvedValue([]);
+
+    // Вызываем обработчик входа в сцену напрямую
+    await handleProjectEnter(ctx);
+
+    // Проверяем, что был вызван метод reply с сообщением о пустом списке проектов
+    expect(ctx.reply).toHaveBeenCalledWith(
+      "У вас еще нет проектов. Хотите создать первый?",
+      expect.anything()
+    );
+
+    // Проверяем, что были вызваны методы storage
+    expect(mockStorage.initialize).toHaveBeenCalled();
+    expect(mockStorage.findUserByTelegramIdOrCreate).toHaveBeenCalledWith(
+      123456789,
+      "testuser",
+      "Test",
+      "User"
+    );
+    expect(mockStorage.getProjectsByUserId).toHaveBeenCalledWith(1);
+    expect(mockStorage.close).toHaveBeenCalled();
+
+    // Проверяем, что был установлен правильный шаг в сессии
     expect(ctx.scene.session.step).toBe(ScraperSceneStep.PROJECT_LIST);
   });
 
-  it("should initialize adapter and show projects list if user exists and has projects", async () => {
-    const mockUser: User = {
-      id: 1,
-      telegram_id: 54321,
-      username: "test",
-      created_at: new Date().toISOString(),
-      is_active: true,
-    };
-    const mockProjects: Project[] = [
-      {
-        id: 1,
-        name: "Project Alpha",
-        user_id: mockUser.id,
-        created_at: new Date().toISOString(),
-        is_active: true,
-      },
-      {
-        id: 2,
-        name: "Project Beta",
-        user_id: mockUser.id,
-        created_at: new Date().toISOString(),
-        is_active: true,
-      },
+  it("should show projects list when user has projects", async () => {
+    // Мокируем результаты запросов
+    mockStorage.findUserByTelegramIdOrCreate.mockResolvedValue({ id: 1, telegram_id: 123456789, username: "testuser" });
+    const mockProjects = [
+      { id: 1, user_id: 1, name: "Project 1" },
+      { id: 2, user_id: 1, name: "Project 2" }
     ];
-    const ctx = createTestContext(
-      {
-        message: {
-          chat: {
-            id: 12345,
-            type: "private",
-            first_name: "Test",
-            username: "testuser",
-          },
-          from: { id: 54321, is_bot: false, first_name: "Test" },
-          message_id: 1,
-          date: Math.floor(Date.now() / 1000),
-          text: "/start",
-        },
-      },
-      {},
-      {
-        initialize: jest.fn().mockResolvedValue(undefined),
-        getUserByTelegramId: jest.fn().mockResolvedValue(mockUser),
-        getProjectsByUserId: jest.fn().mockResolvedValue(mockProjects),
-      }
-    );
+    mockStorage.getProjectsByUserId.mockResolvedValue(mockProjects);
 
-    const enterMiddleware = projectScene.enterMiddleware();
-    await enterMiddleware(ctx, jest.fn());
+    // Подготавливаем вызов обработчика
 
-    expect(mockAdapter.initialize).toHaveBeenCalledTimes(1);
-    expect(mockAdapter.getUserByTelegramId).toHaveBeenCalledWith(54321);
-    expect(mockAdapter.getProjectsByUserId).toHaveBeenCalledWith(mockUser.id);
+    // Вызываем обработчик входа в сцену напрямую
+    await handleProjectEnter(ctx);
+
+    // Проверяем, что был вызван метод reply с сообщением со списком проектов
     expect(ctx.reply).toHaveBeenCalledWith(
-      expect.stringContaining(
-        "Ваши проекты: Выберите проект для управления или создайте новый."
-      ),
-      expect.any(Object)
+      "Ваши проекты:",
+      expect.anything()
     );
+
+    // Проверяем, что были вызваны методы storage
+    expect(mockStorage.initialize).toHaveBeenCalled();
+    expect(mockStorage.findUserByTelegramIdOrCreate).toHaveBeenCalledWith(
+      123456789,
+      "testuser",
+      "Test",
+      "User"
+    );
+    expect(mockStorage.getProjectsByUserId).toHaveBeenCalledWith(1);
+    expect(mockStorage.close).toHaveBeenCalled();
+
+    // Проверяем, что был установлен правильный шаг в сессии
     expect(ctx.scene.session.step).toBe(ScraperSceneStep.PROJECT_LIST);
   });
 
-  it("should show error message if adapter.initialize fails", async () => {
-    const ctx = createTestContext(
-      {
-        message: {
-          chat: {
-            id: 12345,
-            type: "private",
-            first_name: "Test",
-            username: "testuser",
-          },
-          from: { id: 54321, is_bot: false, first_name: "Test" },
-          message_id: 1,
-          date: Math.floor(Date.now() / 1000),
-          text: "/start",
-        },
-      },
-      {},
-      {
-        initialize: jest.fn().mockRejectedValue(new Error("Init error")),
-        getUserByTelegramId: jest.fn(),
-        getProjectsByUserId: jest.fn(),
-      }
-    );
+  it("should handle error when findUserByTelegramIdOrCreate returns null", async () => {
+    // Мокируем результаты запросов
+    mockStorage.findUserByTelegramIdOrCreate.mockResolvedValue(null);
 
-    const enterMiddleware = projectScene.enterMiddleware();
-    await enterMiddleware(ctx, jest.fn());
+    // Вызываем обработчик входа в сцену напрямую
+    await handleProjectEnter(ctx);
 
-    expect(mockAdapter.initialize).toHaveBeenCalledTimes(1);
-    expect(mockAdapter.getUserByTelegramId).not.toHaveBeenCalled();
-    expect(mockAdapter.getProjectsByUserId).not.toHaveBeenCalled();
+    // Проверяем, что был вызван метод reply с сообщением об ошибке
     expect(ctx.reply).toHaveBeenCalledWith(
-      expect.stringContaining(
-        "Произошла ошибка при получении проектов. Пожалуйста, попробуйте позже."
-      )
+      "Произошла ошибка при получении данных пользователя. Попробуйте позже."
     );
-    expect(ctx.scene.leave).toHaveBeenCalledTimes(1);
-    expect(ctx.scene.session.step).toBeUndefined();
+
+    // Проверяем, что был вызван метод leave
+    expect(ctx.scene.leave).toHaveBeenCalled();
+
+    // Проверяем, что были вызваны методы storage
+    expect(mockStorage.initialize).toHaveBeenCalled();
+    expect(mockStorage.findUserByTelegramIdOrCreate).toHaveBeenCalledWith(
+      123456789,
+      "testuser",
+      "Test",
+      "User"
+    );
+    expect(mockStorage.close).toHaveBeenCalled();
   });
 
-  it("should show error and leave scene if user is not found", async () => {
-    const ctx = createTestContext(
-      {
-        message: {
-          chat: {
-            id: 12345,
-            type: "private",
-            first_name: "Test",
-            username: "testuser",
-          },
-          from: { id: 54321, is_bot: false, first_name: "Test" },
-          message_id: 1,
-          date: Math.floor(Date.now() / 1000),
-          text: "/start",
-        },
-      },
-      {},
-      {
-        initialize: jest.fn().mockResolvedValue(undefined),
-        getUserByTelegramId: jest.fn().mockResolvedValue(null),
-        getProjectsByUserId: jest.fn(),
-      }
-    );
+  it("should handle error when getProjectsByUserId throws", async () => {
+    // Мокируем результаты запросов
+    mockStorage.findUserByTelegramIdOrCreate.mockResolvedValue({ id: 1, telegram_id: 123456789, username: "testuser" });
+    mockStorage.getProjectsByUserId.mockRejectedValue(new Error("Database error"));
 
-    const enterMiddleware = projectScene.enterMiddleware();
-    await enterMiddleware(ctx, jest.fn());
+    // Вызываем обработчик входа в сцену напрямую
+    await handleProjectEnter(ctx);
 
-    expect(mockAdapter.initialize).toHaveBeenCalledTimes(1);
-    expect(mockAdapter.getUserByTelegramId).toHaveBeenCalledWith(54321);
-    expect(mockAdapter.getProjectsByUserId).not.toHaveBeenCalled();
+    // Проверяем, что был вызван метод reply с сообщением об ошибке
     expect(ctx.reply).toHaveBeenCalledWith(
-      expect.stringContaining(
-        "Вы не зарегистрированы. Пожалуйста, используйте сначала основные команды бота."
-      )
-    );
-    expect(ctx.scene.leave).toHaveBeenCalledTimes(1);
-    expect(ctx.scene.session.step).toBeUndefined();
-  });
-
-  it("should show error and leave scene if getProjectsByUserId fails", async () => {
-    const mockUser: User = {
-      id: 1,
-      telegram_id: 54321,
-      username: "test",
-      created_at: new Date().toISOString(),
-      is_active: true,
-    };
-    const ctx = createTestContext(
-      {
-        message: {
-          chat: {
-            id: 12345,
-            type: "private",
-            first_name: "Test",
-            username: "testuser",
-          },
-          from: { id: 54321, is_bot: false, first_name: "Test" },
-          message_id: 1,
-          date: Math.floor(Date.now() / 1000),
-          text: "/start",
-        },
-      },
-      {},
-      {
-        initialize: jest.fn().mockResolvedValue(undefined),
-        getUserByTelegramId: jest.fn().mockResolvedValue(mockUser),
-        getProjectsByUserId: jest.fn().mockRejectedValue(new Error("DB error")),
-      }
+      "Произошла ошибка при загрузке ваших проектов. Попробуйте еще раз."
     );
 
-    const enterMiddleware = projectScene.enterMiddleware();
-    await enterMiddleware(ctx, jest.fn());
+    // Проверяем, что был вызван метод leave
+    expect(ctx.scene.leave).toHaveBeenCalled();
 
-    expect(mockAdapter.initialize).toHaveBeenCalledTimes(1);
-    expect(mockAdapter.getUserByTelegramId).toHaveBeenCalledWith(54321);
-    expect(mockAdapter.getProjectsByUserId).toHaveBeenCalledWith(mockUser.id);
-    expect(ctx.reply).toHaveBeenCalledWith(
-      expect.stringContaining(
-        "Произошла ошибка при получении проектов. Пожалуйста, попробуйте позже."
-      )
+    // Проверяем, что были вызваны методы storage
+    expect(mockStorage.initialize).toHaveBeenCalled();
+    expect(mockStorage.findUserByTelegramIdOrCreate).toHaveBeenCalledWith(
+      123456789,
+      "testuser",
+      "Test",
+      "User"
     );
-    expect(ctx.scene.leave).toHaveBeenCalledTimes(1);
-    expect(ctx.scene.session.step).toBeUndefined();
+    expect(mockStorage.getProjectsByUserId).toHaveBeenCalledWith(1);
+    expect(mockStorage.close).toHaveBeenCalled();
   });
 });
