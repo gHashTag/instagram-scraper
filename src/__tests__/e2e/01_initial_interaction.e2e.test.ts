@@ -34,7 +34,7 @@ mock.module("../../adapters/neon-adapter", () => {
   };
 });
 
-describe.skip("E2E: Initial Bot Interaction", () => {
+describe("E2E: Initial Bot Interaction", () => {
   let testEnv: ReturnType<typeof setupE2ETestEnvironment>;
 
   beforeEach(() => {

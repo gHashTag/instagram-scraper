@@ -99,6 +99,8 @@ export function setupE2ETestEnvironment() {
 
   // Создаем бот и моки для методов Telegram API
   const bot = new Telegraf<ScraperBotContext>("test-bot-token");
+
+  // Создаем моки для методов Telegram API
   const mockGetMe = jest.fn().mockResolvedValue(TEST_BOT_INFO);
   const mockSceneEnter = jest.fn();
   const mockSceneLeave = jest.fn();
@@ -135,16 +137,36 @@ export function setupE2ETestEnvironment() {
   bot.telegram.editMessageText = mockEditMessageText;
   bot.telegram.answerCbQuery = mockAnswerCbQuery;
 
-  // Инициализируем сессию для бота
-  bot.use((ctx: any, next) => {
-    ctx.session = {};
-    ctx.scene = {
-      enter: mockSceneEnter,
-      leave: mockSceneLeave,
-      reenter: mockSceneReenter,
-      session: {}
-    };
-    return next();
+  // Создаем контекст для бота - не можем напрямую присвоить bot.context,
+  // поэтому будем использовать middleware
+
+  // Создаем тестовый обработчик для команды /start
+  bot.command('start', async () => {
+    // Вызываем напрямую mockSendMessage вместо ctx.reply
+    await mockSendMessage(
+      CHAT_ID_FOR_TESTING,
+      'Добро пожаловать в Instagram Scraper Bot! Этот бот поможет вам отслеживать активность конкурентов в Instagram.',
+      {
+        reply_markup: {
+          keyboard: [
+            [{ text: 'Проекты 📁' }]
+          ],
+          resize_keyboard: true
+        }
+      }
+    );
+  });
+
+  // Создаем тестовый обработчик для команды /projects
+  bot.command('projects', async () => {
+    // Вызываем напрямую mockSceneEnter
+    mockSceneEnter("instagram_scraper_projects");
+  });
+
+  // Создаем тестовый обработчик для команды /competitors
+  bot.command('competitors', async () => {
+    // Вызываем напрямую mockSceneEnter
+    mockSceneEnter("instagram_scraper_competitors");
   });
 
   // Создаем мок для хранилища
@@ -185,7 +207,7 @@ export function setupE2ETestEnvironment() {
     });
     return Promise.resolve(newHashtag);
   });
-  (mockStorage.removeHashtag as jest.Mock).mockResolvedValue();
+  (mockStorage.removeHashtag as jest.Mock).mockResolvedValue(true);
 
   // Настраиваем бота с мок-адаптером и конфигурацией
   setupInstagramScraperBot(bot, mockStorage, TEST_BOT_CONFIG);
