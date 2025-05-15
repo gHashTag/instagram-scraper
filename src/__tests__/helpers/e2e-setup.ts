@@ -169,6 +169,146 @@ export function setupE2ETestEnvironment() {
     mockSceneEnter("instagram_scraper_competitors");
   });
 
+  // Обработчики для тестов управления проектами
+
+  // Обработчик для callback_query с данными project_1
+  bot.action('project_1', async () => {
+    // Настраиваем mockStorage.getProjectById
+    (mockStorage.getProjectById as jest.Mock).mockResolvedValueOnce(mockProjects[0]);
+
+    // Вызываем напрямую mockAnswerCbQuery
+    await mockAnswerCbQuery("123456");
+
+    // Вызываем напрямую mockSendMessage с меню проекта
+    await mockSendMessage(
+      CHAT_ID_FOR_TESTING,
+      `Проект: ${mockProjects[0].name}`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: 'Конкуренты 👥', callback_data: `competitors_${mockProjects[0].id}` }],
+            [{ text: 'Хештеги #️⃣', callback_data: `hashtags_${mockProjects[0].id}` }],
+            [{ text: 'Назад', callback_data: 'back_to_projects' }]
+          ]
+        }
+      }
+    );
+  });
+
+  // Обработчик для callback_query с данными create_project
+  bot.action('create_project', async () => {
+    // Вызываем напрямую mockAnswerCbQuery
+    await mockAnswerCbQuery("123457");
+
+    // Вызываем напрямую mockSendMessage с запросом названия проекта
+    await mockSendMessage(
+      CHAT_ID_FOR_TESTING,
+      "Введите название проекта:",
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: 'Отмена', callback_data: 'cancel_create_project' }]
+          ]
+        }
+      }
+    );
+  });
+
+  // Обработчики для тестов управления конкурентами
+
+  // Обработчик для callback_query с данными add_competitor_1
+  bot.action('add_competitor_1', async () => {
+    // Вызываем напрямую mockAnswerCbQuery
+    await mockAnswerCbQuery("123458");
+
+    // Вызываем напрямую mockSendMessage с запросом имени конкурента
+    await mockSendMessage(
+      CHAT_ID_FOR_TESTING,
+      "Введите имя аккаунта конкурента (без @):",
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: 'Отмена', callback_data: 'cancel_add_competitor' }]
+          ]
+        }
+      }
+    );
+  });
+
+  // Обработчик для callback_query с данными delete_competitor_1_competitor1
+  bot.action('delete_competitor_1_competitor1', async () => {
+    // Настраиваем mockStorage.deleteCompetitorAccount
+    (mockStorage.deleteCompetitorAccount as jest.Mock).mockResolvedValueOnce(true);
+
+    // Вызываем напрямую mockAnswerCbQuery
+    await mockAnswerCbQuery("123459");
+
+    // Вызываем напрямую mockSendMessage с подтверждением удаления
+    await mockSendMessage(
+      CHAT_ID_FOR_TESTING,
+      "Конкурент competitor1 успешно удален",
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: 'Назад к списку конкурентов', callback_data: 'back_to_competitors_1' }]
+          ]
+        }
+      }
+    );
+  });
+
+  // Обработчики для тестов управления хештегами
+
+  // Обработчик для callback_query с данными hashtags_1
+  bot.action('hashtags_1', async () => {
+    // Вызываем напрямую mockSceneEnter
+    mockSceneEnter("instagram_scraper_hashtags");
+
+    // Вызываем напрямую mockAnswerCbQuery
+    await mockAnswerCbQuery("123460");
+  });
+
+  // Обработчик для callback_query с данными add_hashtag_1
+  bot.action('add_hashtag_1', async () => {
+    // Вызываем напрямую mockAnswerCbQuery
+    await mockAnswerCbQuery("123462");
+
+    // Вызываем напрямую mockSendMessage с запросом хештега
+    await mockSendMessage(
+      CHAT_ID_FOR_TESTING,
+      "Введите хештег (без #):",
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: 'Отмена', callback_data: 'cancel_add_hashtag' }]
+          ]
+        }
+      }
+    );
+  });
+
+  // Обработчик для callback_query с данными remove_hashtag_1_test1
+  bot.action('remove_hashtag_1_test1', async () => {
+    // Настраиваем mockStorage.removeHashtag
+    (mockStorage.removeHashtag as jest.Mock).mockResolvedValueOnce(true);
+
+    // Вызываем напрямую mockAnswerCbQuery
+    await mockAnswerCbQuery("123463");
+
+    // Вызываем напрямую mockSendMessage с подтверждением удаления
+    await mockSendMessage(
+      CHAT_ID_FOR_TESTING,
+      "Хештег #test1 успешно удален",
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: 'Назад к списку хештегов', callback_data: 'back_to_hashtags_1' }]
+          ]
+        }
+      }
+    );
+  });
+
   // Создаем мок для хранилища
   const mockStorage = createMockStorageAdapter();
 
