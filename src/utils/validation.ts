@@ -33,15 +33,27 @@ export function isValidProjectName(name: string): boolean {
  * @returns true, если URL валиден, иначе false.
  */
 export function isValidInstagramUrl(url: string): boolean {
-  if (url === null || url === undefined || url === "") {
+  if (!url || typeof url !== 'string') {
     return false;
   }
+
+  // Проверяем, что URL начинается с http:// или https://
+  if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    return false;
+  }
+
   try {
     const parsedUrl = new URL(url);
+
+    // Проверяем, что протокол только http или https
+    if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
+      return false;
+    }
+
+    // Проверяем, что хост только instagram.com или www.instagram.com
     return (
-      (parsedUrl.protocol === "http:" || parsedUrl.protocol === "https:") &&
-      (parsedUrl.hostname === "www.instagram.com" ||
-        parsedUrl.hostname === "instagram.com")
+      parsedUrl.hostname === "www.instagram.com" ||
+      parsedUrl.hostname === "instagram.com"
     );
   } catch (error) {
     return false; // Невалидный URL, если конструктор URL выбросил ошибку
@@ -62,30 +74,33 @@ export function extractUsernameFromUrl(url: string): string | null {
     const pathParts = parsedUrl.pathname
       .split("/")
       .filter((part) => part.length > 0);
-    // Ожидаем, что имя пользователя - первая часть пути, например, /username/
-    // или /username?some_query
-    if (pathParts.length > 0) {
-      // Удаляем возможный конечный слэш
-      const usernameCandidate = pathParts[0];
-      // Простая проверка, что это не p, reel, story и т.д.
-      if (
-        ![
-          "p",
-          "reel",
-          "reels",
-          "stories",
-          "explore",
-          "accounts",
-          "tags",
-        ].includes(usernameCandidate)
-      ) {
-        return usernameCandidate;
-      }
+
+    // Проверяем, что путь не пустой
+    if (pathParts.length === 0) {
+      return null;
     }
+
+    // Список специальных путей, которые не являются именами пользователей
+    const specialPaths = [
+      "p",
+      "reel",
+      "reels",
+      "stories",
+      "explore",
+      "accounts",
+      "tags",
+    ];
+
+    // Проверяем, что первая часть пути не является специальным путем
+    if (specialPaths.includes(pathParts[0])) {
+      return null;
+    }
+
+    // Возвращаем имя пользователя
+    return pathParts[0];
   } catch (error) {
     return null;
   }
-  return null;
 }
 
 /**

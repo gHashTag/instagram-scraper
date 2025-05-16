@@ -22,6 +22,35 @@ import { MockedNeonAdapterType, createMockNeonAdapter } from "../../helpers/type
 import { createMockCompetitor, createMockUser } from "../../helpers/mocks";
 import { handleCompetitorText } from "../../../scenes/competitor-scene";
 
+// Мокируем модуль validation
+mock.module("../../../utils/validation", () => {
+  return {
+    isValidInstagramUrl: jest.fn().mockImplementation((url) => {
+      // Проверка для тестов
+      if (!url || typeof url !== 'string') {
+        return false;
+      }
+      return url.includes("instagram.com");
+    }),
+    extractUsernameFromUrl: jest.fn().mockImplementation((url) => {
+      // Возвращаем null для невалидных URL
+      if (!url || !url.includes("instagram.com")) {
+        return null;
+      }
+      // Возвращаем null для URL без имени пользователя
+      if (url === "https://www.instagram.com/" || url === "https://instagram.com/") {
+        return null;
+      }
+      // Извлекаем имя пользователя из URL
+      const match = url.match(/instagram\.com\/([^/?]+)/);
+      if (match && match[1]) {
+        return match[1];
+      }
+      return null;
+    }),
+  };
+});
+
 // Мокируем NeonAdapter
 mock.module("../../../adapters/neon-adapter", () => {
   return {
@@ -167,11 +196,7 @@ describe("competitorScene - On Text Handler (ADD_COMPETITOR step) - Direct Call"
   });
 
   it("should reply with error if URL is invalid", async () => {
-    // Мокируем isValidInstagramUrl для этого теста
-    const validationModule = require("../../../utils/validation");
-    const originalIsValidInstagramUrl = validationModule.isValidInstagramUrl;
-    validationModule.isValidInstagramUrl = jest.fn().mockReturnValue(false);
-
+    // Используем заведомо невалидный URL
     ctx = createMockTextContext("невалидный урл", {
       step: ScraperSceneStep.ADD_COMPETITOR,
       projectId: 41,
@@ -183,9 +208,6 @@ describe("competitorScene - On Text Handler (ADD_COMPETITOR step) - Direct Call"
       "Пожалуйста, введите корректный URL Instagram-аккаунта (например, https://www.instagram.com/example):"
     );
     expect(ctx.scene.reenter).not.toHaveBeenCalled();
-
-    // Восстанавливаем оригинальную функцию
-    validationModule.isValidInstagramUrl = originalIsValidInstagramUrl;
   });
 
   it("should successfully add a competitor", async () => {
@@ -404,11 +426,7 @@ describe("competitorScene - On Text Handler (ADD_COMPETITOR step) - Direct Call"
   });
 
   it("should reply with error if username cannot be extracted from URL", async () => {
-    // Мокируем extractUsernameFromUrl для этого теста
-    const validationModule = require("../../../utils/validation");
-    const originalExtractUsernameFromUrl = validationModule.extractUsernameFromUrl;
-    validationModule.extractUsernameFromUrl = jest.fn().mockReturnValue(null);
-
+    // Используем URL без имени пользователя
     ctx = createMockTextContext(
       "https://www.instagram.com/",
       {
@@ -436,9 +454,6 @@ describe("competitorScene - On Text Handler (ADD_COMPETITOR step) - Direct Call"
     expect(
       (ctx.storage as MockedNeonAdapterType).addCompetitorAccount
     ).not.toHaveBeenCalled();
-
-    // Восстанавливаем оригинальную функцию
-    validationModule.extractUsernameFromUrl = originalExtractUsernameFromUrl;
   });
 });
 
@@ -470,11 +485,7 @@ describe("handleCompetitorText", () => {
   });
 
   it("should reply with error if URL is invalid", async () => {
-    // Мокируем isValidInstagramUrl для этого теста
-    const validationModule = require("../../../utils/validation");
-    const originalIsValidInstagramUrl = validationModule.isValidInstagramUrl;
-    validationModule.isValidInstagramUrl = jest.fn().mockReturnValue(false);
-
+    // Используем заведомо невалидный URL
     ctx = createMockTextContext("невалидный урл", {
       step: ScraperSceneStep.ADD_COMPETITOR,
       projectId: 41,
@@ -489,9 +500,6 @@ describe("handleCompetitorText", () => {
     expect(
       (ctx.storage as MockedNeonAdapterType).addCompetitorAccount
     ).not.toHaveBeenCalled();
-
-    // Восстанавливаем оригинальную функцию
-    validationModule.isValidInstagramUrl = originalIsValidInstagramUrl;
   });
 
   it("should successfully add a competitor", async () => {
@@ -710,11 +718,7 @@ describe("handleCompetitorText", () => {
   });
 
   it("should reply with error if username cannot be extracted from URL", async () => {
-    // Мокируем extractUsernameFromUrl для этого теста
-    const validationModule = require("../../../utils/validation");
-    const originalExtractUsernameFromUrl = validationModule.extractUsernameFromUrl;
-    validationModule.extractUsernameFromUrl = jest.fn().mockReturnValue(null);
-
+    // Используем URL без имени пользователя
     ctx = createMockTextContext(
       "https://www.instagram.com/",
       {
@@ -742,8 +746,5 @@ describe("handleCompetitorText", () => {
     expect(
       (ctx.storage as MockedNeonAdapterType).addCompetitorAccount
     ).not.toHaveBeenCalled();
-
-    // Восстанавливаем оригинальную функцию
-    validationModule.extractUsernameFromUrl = originalExtractUsernameFromUrl;
   });
 });
