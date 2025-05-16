@@ -66,7 +66,7 @@ describe("Project Keyboard", () => {
     const projectId = 1;
     const keyboard = generateProjectMenuKeyboard(projectId);
 
-    expect(keyboard.reply_markup.inline_keyboard).toHaveLength(5); // 5 кнопок
+    expect(keyboard.reply_markup.inline_keyboard).toHaveLength(6); // 6 кнопок
     expect(keyboard.reply_markup.inline_keyboard[0][0].text).toBe(
       "👥 Управлять конкурентами"
     );
@@ -74,12 +74,15 @@ describe("Project Keyboard", () => {
       "📊 Управлять хештегами"
     );
     expect(keyboard.reply_markup.inline_keyboard[2][0].text).toBe(
-      "▶️ Запустить скрапинг (TODO)"
+      "▶️ Запустить скрапинг"
     );
     expect(keyboard.reply_markup.inline_keyboard[3][0].text).toBe(
-      "👀 Просмотреть Reels (TODO)"
+      "👀 Просмотр Reels"
     );
     expect(keyboard.reply_markup.inline_keyboard[4][0].text).toBe(
+      "📋 Коллекции Reels"
+    );
+    expect(keyboard.reply_markup.inline_keyboard[5][0].text).toBe(
       "🔙 Назад к проектам"
     );
   });

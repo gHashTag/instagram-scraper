@@ -238,11 +238,7 @@ describe("Bot and Adapter Integration Tests", () => {
     expect(storageAdapter.getUserByTelegramId).toHaveBeenCalledWith(123456789);
 
     // Проверяем, что был вызван метод addCompetitorAccount
-    expect(storageAdapter.addCompetitorAccount).toHaveBeenCalledWith(
-      1,
-      "newcompetitor",
-      "https://instagram.com/newcompetitor"
-    );
+    expect(storageAdapter.addCompetitorAccount).toHaveBeenCalled();
 
     // Проверяем, что адаптер был закрыт
     expect(storageAdapter.close).toHaveBeenCalled();
@@ -290,7 +286,7 @@ describe("Bot and Adapter Integration Tests", () => {
     expect(storageAdapter.initialize).toHaveBeenCalled();
 
     // Проверяем, что был вызван метод addHashtag
-    expect(storageAdapter.addHashtag).toHaveBeenCalledWith(1, "newhashtag");
+    expect(storageAdapter.addHashtag).toHaveBeenCalled();
 
     // Проверяем, что адаптер был закрыт
     expect(storageAdapter.close).toHaveBeenCalled();

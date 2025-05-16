@@ -5,9 +5,8 @@ import { setupInstagramScraperBot } from "../../..";
 import type {
   ScraperBotContext,
   InstagramScraperBotConfig,
-  StorageAdapter,
 } from "../../types";
-import { createMockStorageAdapter, MockedStorageAdapterType } from "./types";
+import { createMockStorageAdapter } from "./types";
 import { createMockUser, createMockProject, createMockCompetitor, createMockHashtag } from "./mocks";
 
 // Определяем тип SpyInstance для использования в тестах

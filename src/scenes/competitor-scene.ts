@@ -98,17 +98,20 @@ export async function handleCompetitorEnter(ctx: ScraperBotContext) {
       const competitors = await adapter.getCompetitorAccounts(projects[0].id);
 
       if (!competitors || competitors.length === 0) {
+        // Добавляем логирование для отладки
+        console.log(`Отображение кнопок для проекта ${projects[0].id} (${projects[0].name})`);
+
         await ctx.reply(
           `В проекте "${projects[0].name}" нет добавленных конкурентов. Хотите добавить?`,
           {
             reply_markup: Markup.inlineKeyboard([
               [
                 Markup.button.callback(
-                  "Добавить конкурента",
+                  "➕ Добавить конкурента",
                   `add_competitor_${projects[0].id}`
                 ),
               ],
-              [Markup.button.callback("Выйти", "exit_scene")],
+              [Markup.button.callback("❌ Выйти", "exit_scene")],
             ]).reply_markup,
           }
         );
@@ -158,14 +161,20 @@ export async function handleCompetitorEnter(ctx: ScraperBotContext) {
       });
     }
 
-    await adapter.close();
   } catch (error) {
     console.error("Ошибка при получении конкурентов:", error);
     await ctx.reply(
       "Не удалось загрузить данные для управления конкурентами. Попробуйте позже или обратитесь в поддержку."
     );
-    // await adapter.close(); // Закрываем в finally или если ошибка не связана с адаптером
     await ctx.scene.leave();
+  } finally {
+    try {
+      if (adapter && typeof adapter.close === "function") {
+        await adapter.close();
+      }
+    } catch (closeError) {
+      console.error("Ошибка при закрытии соединения с базой данных:", closeError);
+    }
   }
 }
 
@@ -206,34 +215,41 @@ export async function handleCompetitorsProjectAction(
         .map((c, i) => `${i + 1}. [${c.username}](${c.instagram_url})`)
         .join("\n");
 
-      // Формируем клавиатуру с кнопками удаления
+      // Формируем клавиатуру с кнопками для каждого конкурента
       const competitorButtons = competitors.map((c) => [
         Markup.button.callback(
-          `🗑️ Удалить ${c.username}`,
+          `${c.username}`,
+          `competitor_${projectId}_${c.id}`
+        ),
+        Markup.button.callback(
+          `👀`,
+          `reels_list_${projectId}_competitor_${c.id}`
+        ),
+        Markup.button.callback(
+          `🗑️`,
           `delete_competitor_${projectId}_${c.username}`
         ),
       ]);
 
       await ctx.reply(
-        `Конкуренты в выбранном проекте:\n\n${competitorList}\n\nЧто вы хотите сделать дальше?`,
+        `Конкуренты в выбранном проекте:\n\n${competitorList}\n\nВыберите конкурента для действий или используйте кнопки ниже:`,
         {
           parse_mode: "Markdown",
           reply_markup: Markup.inlineKeyboard([
-            ...competitorButtons, // Добавляем кнопки удаления
+            ...competitorButtons, // Добавляем кнопки для каждого конкурента
             [
               Markup.button.callback(
-                "Добавить конкурента",
+                "➕ Добавить конкурента",
                 `add_competitor_${projectId}`
               ),
             ],
-            [Markup.button.callback("Назад к проектам", "back_to_projects")],
-            [Markup.button.callback("Выйти", "exit_scene")],
+            [Markup.button.callback("🔙 Назад к проектам", "back_to_projects")],
+            [Markup.button.callback("❌ Выйти", "exit_scene")],
           ]).reply_markup,
         }
       );
     }
 
-    await adapter.close();
   } catch (error) {
     console.error(
       `Ошибка при получении конкурентов проекта ${projectId}:`,
@@ -242,7 +258,14 @@ export async function handleCompetitorsProjectAction(
     await ctx.reply(
       "Не удалось загрузить список конкурентов для этого проекта. Попробуйте позже или обратитесь в поддержку."
     );
-    // await adapter.close();
+  } finally {
+    try {
+      if (adapter && typeof adapter.close === "function") {
+        await adapter.close();
+      }
+    } catch (closeError) {
+      console.error("Ошибка при закрытии соединения с базой данных:", closeError);
+    }
   }
 
   await ctx.answerCbQuery();
@@ -254,23 +277,42 @@ export async function handleCompetitorsProjectAction(
 export async function handleAddCompetitorAction(
   ctx: ScraperBotContext & { match: RegExpExecArray }
 ) {
-  const projectId = parseInt(ctx.match![1]);
+  console.log("[DEBUG] Обработчик кнопки 'Добавить конкурента' вызван");
+  console.log("[DEBUG] match:", ctx.match);
 
-  if (isNaN(projectId)) {
-    console.error(`Invalid projectId parsed from action: ${ctx.match![1]}`);
+  try {
+    const projectId = parseInt(ctx.match![1]);
+    console.log(`[DEBUG] Извлеченный projectId: ${projectId}`);
+
+    if (isNaN(projectId)) {
+      console.error(`Invalid projectId parsed from action: ${ctx.match![1]}`);
+      await ctx.reply(
+        "Ошибка выбора проекта. Пожалуйста, вернитесь назад и выберите проект снова."
+      );
+      await ctx.answerCbQuery();
+      return;
+    }
+
+    console.log(`[DEBUG] Установка projectId в сессии: ${projectId}`);
+    ctx.scene.session.projectId = projectId;
+
     await ctx.reply(
-      "Ошибка выбора проекта. Пожалуйста, вернитесь назад и выберите проект снова."
+      "Введите Instagram URL конкурента (например, https://www.instagram.com/example):"
     );
-    await ctx.answerCbQuery();
-    return;
-  }
 
-  ctx.scene.session.projectId = projectId;
-  await ctx.reply(
-    "Введите Instagram URL конкурента (например, https://www.instagram.com/example):"
-  );
-  ctx.scene.session.step = ScraperSceneStep.ADD_COMPETITOR;
-  await ctx.answerCbQuery();
+    console.log(`[DEBUG] Установка шага в сессии: ${ScraperSceneStep.ADD_COMPETITOR}`);
+    ctx.scene.session.step = ScraperSceneStep.ADD_COMPETITOR;
+
+    await ctx.answerCbQuery();
+  } catch (error) {
+    console.error("[ERROR] Ошибка в обработчике кнопки 'Добавить конкурента':", error);
+    try {
+      await ctx.reply("Произошла ошибка при добавлении конкурента. Пожалуйста, попробуйте снова.");
+      await ctx.answerCbQuery("Произошла ошибка");
+    } catch (e) {
+      console.error("[ERROR] Не удалось отправить сообщение об ошибке:", e);
+    }
+  }
 }
 
 /**
@@ -386,21 +428,36 @@ competitorScene.on("text", handleCompetitorText);
  * Обработчик кнопки "Выйти"
  */
 export async function handleExitCompetitorSceneAction(ctx: ScraperBotContext) {
-  await ctx.reply("Вы вышли из режима управления конкурентами.", {
-    reply_markup: { remove_keyboard: true },
-  });
+  console.log("[DEBUG] Обработчик кнопки 'Выйти' вызван");
 
-  // Если есть ID проекта в сессии, переходим в сцену проектов с этим ID
-  if (ctx.scene.session.currentProjectId) {
-    await ctx.scene.leave();
-    await ctx.scene.enter("projectScene", {
-      projectId: ctx.scene.session.currentProjectId,
+  try {
+    await ctx.reply("Вы вышли из режима управления конкурентами.", {
+      reply_markup: { remove_keyboard: true },
     });
-  } else {
-    await ctx.scene.leave();
-  }
 
-  await ctx.answerCbQuery();
+    // Если есть ID проекта в сессии, переходим в сцену проектов с этим ID
+    if (ctx.scene.session.currentProjectId) {
+      console.log(`[DEBUG] Переход в сцену проектов с ID: ${ctx.scene.session.currentProjectId}`);
+      await ctx.scene.leave();
+      await ctx.scene.enter("projectScene", {
+        projectId: ctx.scene.session.currentProjectId,
+      });
+    } else {
+      console.log("[DEBUG] Выход из сцены без перехода в другую сцену");
+      await ctx.scene.leave();
+    }
+
+    await ctx.answerCbQuery();
+  } catch (error) {
+    console.error("[ERROR] Ошибка в обработчике кнопки 'Выйти':", error);
+    // Пытаемся выйти из сцены даже при ошибке
+    try {
+      await ctx.scene.leave();
+    } catch (e) {
+      console.error("[ERROR] Не удалось выйти из сцены:", e);
+    }
+    await ctx.answerCbQuery("Произошла ошибка").catch(() => {});
+  }
 }
 
 /**
@@ -418,21 +475,45 @@ export async function handleBackToProjectsCompetitorAction(
   }
 }
 
+// Импортируем утилиту для обработки кнопок
+import { registerButtons } from '../utils/button-handler';
+
 // Регистрация обработчиков в сцене
-competitorScene.action(
-  /competitors_project_(\d+)/,
-  handleCompetitorsProjectAction
-);
-competitorScene.action(/add_competitor_(\d+)/, handleAddCompetitorAction);
-competitorScene.action("exit_scene", handleExitCompetitorSceneAction);
-competitorScene.action(
-  "back_to_projects",
-  handleBackToProjectsCompetitorAction as any // Используем as any из-за временного изменения сигнатуры
-);
-competitorScene.action(
-  /delete_competitor_(\d+)_(.+)/,
-  handleDeleteCompetitorAction
-);
+console.log("[DEBUG] Регистрация обработчиков действий в сцене конкурентов");
+
+// Регистрируем все обработчики кнопок с помощью нашей утилиты
+registerButtons(competitorScene, [
+  {
+    id: /competitors_project_(\d+)/,
+    handler: handleCompetitorsProjectAction,
+    errorMessage: "Не удалось загрузить список конкурентов для этого проекта. Попробуйте позже.",
+    verbose: true
+  },
+  {
+    id: /add_competitor_(\d+)/,
+    handler: handleAddCompetitorAction,
+    errorMessage: "Произошла ошибка при добавлении конкурента. Пожалуйста, попробуйте снова.",
+    verbose: true
+  },
+  {
+    id: "exit_scene",
+    handler: handleExitCompetitorSceneAction,
+    errorMessage: "Произошла ошибка при выходе из сцены. Попробуйте еще раз.",
+    verbose: true
+  },
+  {
+    id: "back_to_projects",
+    handler: handleBackToProjectsCompetitorAction as any, // Используем as any из-за временного изменения сигнатуры
+    errorMessage: "Произошла ошибка при возврате к проектам. Попробуйте еще раз.",
+    verbose: true
+  },
+  {
+    id: /delete_competitor_(\d+)_(.+)/,
+    handler: handleDeleteCompetitorAction,
+    errorMessage: "Произошла ошибка при удалении конкурента. Попробуйте еще раз.",
+    verbose: true
+  }
+]);
 
 
 export default competitorScene;

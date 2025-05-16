@@ -6,7 +6,9 @@ import {
   Hashtag,
   ReelContent,
   ReelsFilter,
-  ParsingRunLog
+  ParsingRunLog,
+  NotificationSettings,
+  ReelsCollection
 } from "./schemas";
 
 // Реэкспортируем типы для обратной совместимости
@@ -17,7 +19,9 @@ export type {
   Hashtag,
   ReelContent,
   ReelsFilter,
-  ParsingRunLog
+  ParsingRunLog,
+  NotificationSettings,
+  ReelsCollection
 };
 
 // Базовый интерфейс для контекста Telegraf с добавлением поддержки сцен
@@ -25,6 +29,11 @@ export interface ScraperBotContext extends TelegrafContext {
   storage: StorageAdapter;
   config: InstagramScraperBotConfig;
   scraperConfig?: InstagramScraperBotConfig;
+  // Добавляем session для поддержки сессии в контексте
+  session?: Scenes.SceneSession<ScraperSceneSessionData> & {
+    user?: User;
+    [key: string]: any;
+  };
   // Возвращаем тип к SceneContextScene, который включает и контекст, и сессию
   scene: Scenes.SceneContextScene<ScraperBotContext, ScraperSceneSessionData>;
   match?: RegExpExecArray | null;
@@ -84,6 +93,12 @@ export interface StorageAdapter {
     sourceId: string | number
   ): Promise<number>;
   getReels(filter?: ReelsFilter): Promise<ReelContent[]>;
+  // Методы для работы с Reels
+  getReelById?(reelId: string): Promise<ReelContent | null>;
+  getReelsCount?(filter?: ReelsFilter): Promise<number>;
+  getReelsByProjectId?(projectId: number, filter?: ReelsFilter): Promise<ReelContent[]>;
+  getReelsByHashtagId?(hashtagId: number, filter?: ReelsFilter): Promise<ReelContent[]>;
+
   logParsingRun(log: Partial<ParsingRunLog>): Promise<ParsingRunLog>;
   // Алиас для logParsingRun (используется в тестах)
   createParsingLog?(log: Partial<ParsingRunLog>): Promise<ParsingRunLog>;
@@ -95,6 +110,33 @@ export interface StorageAdapter {
   ): Promise<ParsingRunLog[]>;
   // Метод для получения логов парсинга по ID проекта (используется в тестах)
   getParsingLogsByProjectId?(projectId: number): Promise<ParsingRunLog[]>;
+
+  // Методы для работы с уведомлениями
+  getNotificationSettings(userId: number): Promise<NotificationSettings | null>;
+  saveNotificationSettings(settings: Partial<NotificationSettings>): Promise<NotificationSettings>;
+  updateNotificationSettings(userId: number, settings: Partial<NotificationSettings>): Promise<NotificationSettings>;
+  getUserById(userId: number): Promise<User | null>;
+  getNewReels(projectId: number, afterDate: string): Promise<ReelContent[]>;
+
+  // Методы для работы с маркетинговыми данными
+  calculateMarketingData?(reel: ReelContent, averageFollowers?: number): Promise<ReelContent>;
+  updateReelMarketingData?(reelId: number, marketingData: Partial<ReelContent>): Promise<ReelContent | null>;
+  getReelsWithMarketingData?(filter?: ReelsFilter): Promise<ReelContent[]>;
+
+  // Методы для работы с коллекциями Reels
+  createReelsCollection?(projectId: number, name: string, description?: string, filter?: ReelsFilter, reelsIds?: string[]): Promise<ReelsCollection>;
+  getReelsCollectionsByProjectId?(projectId: number): Promise<ReelsCollection[]>;
+  getReelsCollectionById?(collectionId: number): Promise<ReelsCollection | null>;
+  updateReelsCollection?(collectionId: number, data: Partial<ReelsCollection>): Promise<ReelsCollection | null>;
+  deleteReelsCollection?(collectionId: number): Promise<boolean>;
+  processReelsCollection?(collectionId: number, format: "text" | "csv" | "json"): Promise<ReelsCollection | null>;
+
+  // Методы для работы с расшифровками видео
+  updateReel?(reelId: string, data: Partial<ReelContent>): Promise<ReelContent | null>;
+  getReelById?(reelId: string): Promise<ReelContent | null>;
+
+  // Метод для выполнения произвольных SQL-запросов
+  executeQuery(query: string, params?: any[]): Promise<any>;
   // TODO: Добавить остальные методы по мере необходимости
 }
 
@@ -123,6 +165,20 @@ export enum ScraperSceneStep {
   SCRAPING_HASHTAGS = "SCRAPING_HASHTAGS", // Добавлен для сцены скрапинга
   SCRAPING_PROGRESS = "SCRAPING_PROGRESS", // Добавлен для сцены скрапинга
   SCRAPING_RESULTS = "SCRAPING_RESULTS", // Добавлен для сцены скрапинга
+  REELS_LIST = "REELS_LIST", // Добавлен для сцены просмотра Reels
+  REEL_DETAILS = "REEL_DETAILS", // Добавлен для сцены просмотра Reels
+  REELS_FILTER = "REELS_FILTER", // Добавлен для сцены просмотра Reels
+  REELS_ANALYTICS = "REELS_ANALYTICS", // Добавлен для сцены просмотра Reels
+  NOTIFICATION_SETTINGS = "NOTIFICATION_SETTINGS", // Добавлен для сцены уведомлений
+  NOTIFICATION_SCHEDULE = "NOTIFICATION_SCHEDULE", // Добавлен для сцены уведомлений
+  REELS_COLLECTIONS = "REELS_COLLECTIONS", // Добавлен для сцены коллекций Reels
+  CREATE_COLLECTION = "CREATE_COLLECTION", // Добавлен для сцены создания коллекции
+  COLLECTION_DETAILS = "COLLECTION_DETAILS", // Добавлен для сцены просмотра коллекции
+  EXPORT_COLLECTION = "EXPORT_COLLECTION", // Добавлен для сцены экспорта коллекции
+  TRANSCRIBE_REEL = "TRANSCRIBE_REEL", // Добавлен для сцены расшифровки Reel
+  EDIT_TRANSCRIPT = "EDIT_TRANSCRIPT", // Добавлен для сцены редактирования расшифровки
+  CHATBOT = "CHATBOT", // Добавлен для сцены чат-бота
+  CHATBOT_REEL_LIST = "CHATBOT_REEL_LIST" // Добавлен для сцены выбора Reel для чат-бота
 }
 
 // Тип ScraperSceneSessionData теперь импортируется из ./schemas
@@ -134,6 +190,25 @@ export interface ScraperSceneSessionData extends Scenes.SceneSessionData {
   messageIdToEdit?: number;
   projectId?: number;
   user?: User;
+  // Поля для сцены просмотра Reels
+  currentReelId?: string;
+  currentSourceType?: "competitor" | "hashtag";
+  currentSourceId?: string | number;
+  reelsFilter?: ReelsFilter;
+  reelsPage?: number;
+  reelsPerPage?: number;
+  // Поля для сцены коллекций Reels
+  currentCollectionId?: number;
+  collectionName?: string;
+  collectionDescription?: string;
+  selectedReelsIds?: string[];
+  contentFormat?: "text" | "csv" | "json";
+  contentData?: string;
+
+  // Поля для сцены расшифровки Reels
+  transcriptLanguage?: string;
+  transcriptText?: string;
+  transcriptEdited?: boolean;
 }
 
 // Тип для MiddlewareFn, если он не импортируется из telegraf/types

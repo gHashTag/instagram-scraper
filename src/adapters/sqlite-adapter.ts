@@ -17,8 +17,11 @@ import {
   Hashtag,
   ReelContent,
   ReelsFilter,
-  ParsingRunLog
+  ParsingRunLog,
+  ReelsCollection
 } from "../schemas";
+import { MarketingAnalyticsService } from "../services/marketing-analytics-service";
+import { ReelsCollectionService } from "../services/reels-collection-service";
 
 // Настройки для адаптера SQLite
 export interface SqliteAdapterConfig {
@@ -349,17 +352,29 @@ export class SqliteAdapter implements StorageAdapter {
     const db = this.ensureConnection();
     let savedCount = 0;
 
+    // Проверяем, существуют ли новые столбцы для маркетинговых данных
+    this.ensureMarketingColumnsExist();
+
     const insertStmt = db.prepare(`
       INSERT INTO ReelsContent (
         project_id, source_type, source_id, instagram_id, url, caption,
         author_username, author_id, views, likes, comments_count,
-        duration, thumbnail_url, music_title, published_at
+        duration, thumbnail_url, music_title, published_at,
+        engagement_rate_video, engagement_rate_all, view_to_like_ratio,
+        comments_to_likes_ratio, recency, marketing_score, days_since_published
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT (instagram_id) DO UPDATE SET
         views = excluded.views,
         likes = excluded.likes,
         comments_count = excluded.comments_count,
+        engagement_rate_video = excluded.engagement_rate_video,
+        engagement_rate_all = excluded.engagement_rate_all,
+        view_to_like_ratio = excluded.view_to_like_ratio,
+        comments_to_likes_ratio = excluded.comments_to_likes_ratio,
+        recency = excluded.recency,
+        marketing_score = excluded.marketing_score,
+        days_since_published = excluded.days_since_published,
         fetched_at = CURRENT_TIMESTAMP
     `);
 
@@ -390,7 +405,14 @@ export class SqliteAdapter implements StorageAdapter {
           reel.duration || null,
           reel.thumbnail_url || null,
           reel.music_title || null,
-          reel.published_at
+          reel.published_at,
+          reel.engagement_rate_video || null,
+          reel.engagement_rate_all || null,
+          reel.view_to_like_ratio || null,
+          reel.comments_to_likes_ratio || null,
+          reel.recency || null,
+          reel.marketing_score || null,
+          reel.days_since_published || null
         );
         if (result.changes > 0) {
           savedCount++;
@@ -401,6 +423,42 @@ export class SqliteAdapter implements StorageAdapter {
       }
     }
     return savedCount;
+  }
+
+  /**
+   * Проверяет наличие столбцов для маркетинговых данных и добавляет их, если они отсутствуют
+   */
+  private ensureMarketingColumnsExist(): void {
+    const db = this.ensureConnection();
+
+    try {
+      // Получаем информацию о столбцах таблицы ReelsContent
+      const tableInfo = db.prepare("PRAGMA table_info(ReelsContent)").all() as any[];
+
+      // Проверяем наличие каждого столбца
+      const columnNames = tableInfo.map(column => column.name);
+
+      // Список новых столбцов для маркетинговых данных
+      const marketingColumns = [
+        { name: "engagement_rate_video", type: "REAL" },
+        { name: "engagement_rate_all", type: "REAL" },
+        { name: "view_to_like_ratio", type: "REAL" },
+        { name: "comments_to_likes_ratio", type: "REAL" },
+        { name: "recency", type: "REAL" },
+        { name: "marketing_score", type: "REAL" },
+        { name: "days_since_published", type: "INTEGER" }
+      ];
+
+      // Добавляем отсутствующие столбцы
+      for (const column of marketingColumns) {
+        if (!columnNames.includes(column.name)) {
+          db.prepare(`ALTER TABLE ReelsContent ADD COLUMN ${column.name} ${column.type}`).run();
+          console.log(`Добавлен столбец ${column.name} в таблицу ReelsContent`);
+        }
+      }
+    } catch (error) {
+      console.error("Ошибка при проверке/добавлении столбцов для маркетинговых данных:", error);
+    }
   }
 
   /**
@@ -463,6 +521,498 @@ export class SqliteAdapter implements StorageAdapter {
     const resultReels = statement.all(...params) as ReelContent[];
 
     return resultReels;
+  }
+
+  /**
+   * Получение списка Reels с маркетинговыми данными по фильтру
+   * @param filter Параметры фильтрации
+   */
+  async getReelsWithMarketingData(filter: ReelsFilter = {}): Promise<ReelContent[]> {
+    // Получаем Reels по фильтру
+    const reels = await this.getReels(filter);
+
+    // Если Reels не найдены, возвращаем пустой массив
+    if (reels.length === 0) {
+      return [];
+    }
+
+    // Создаем экземпляр сервиса для расчета маркетинговых данных
+    const marketingService = new MarketingAnalyticsService();
+
+    // Рассчитываем маркетинговые данные для каждого Reel
+    const reelsWithMarketingData = reels.map(reel => {
+      return marketingService.calculateMarketingData(reel);
+    });
+
+    return reelsWithMarketingData;
+  }
+
+  /**
+   * Рассчитывает маркетинговые данные для Reel
+   * @param reel Reel для расчета маркетинговых данных
+   * @param averageFollowers Среднее количество подписчиков для расчета Engagement Rate (All)
+   * @returns Reel с рассчитанными маркетинговыми данными
+   */
+  async calculateMarketingData(reel: ReelContent, averageFollowers: number = 10000): Promise<ReelContent> {
+    // Создаем экземпляр сервиса для расчета маркетинговых данных
+    const marketingService = new MarketingAnalyticsService();
+
+    // Рассчитываем маркетинговые данные
+    const reelWithMarketingData = marketingService.calculateMarketingData(reel, averageFollowers);
+
+    // Обновляем данные в базе
+    await this.updateReelMarketingData(reel.id || 0, reelWithMarketingData);
+
+    return reelWithMarketingData;
+  }
+
+  /**
+   * Обновляет маркетинговые данные для Reel
+   * @param reelId ID Reel
+   * @param marketingData Маркетинговые данные для обновления
+   * @returns Обновленный Reel или null, если Reel не найден
+   */
+  async updateReelMarketingData(reelId: number, marketingData: Partial<ReelContent>): Promise<ReelContent | null> {
+    const db = this.ensureConnection();
+
+    try {
+      // Проверяем, существуют ли новые столбцы для маркетинговых данных
+      this.ensureMarketingColumnsExist();
+
+      // Формируем запрос на обновление
+      let query = "UPDATE ReelsContent SET ";
+      const params: any[] = [];
+      const fields: string[] = [];
+
+      // Добавляем маркетинговые данные в запрос
+      if (marketingData.engagement_rate_video !== undefined) {
+        fields.push("engagement_rate_video = ?");
+        params.push(marketingData.engagement_rate_video);
+      }
+
+      if (marketingData.engagement_rate_all !== undefined) {
+        fields.push("engagement_rate_all = ?");
+        params.push(marketingData.engagement_rate_all);
+      }
+
+      if (marketingData.view_to_like_ratio !== undefined) {
+        fields.push("view_to_like_ratio = ?");
+        params.push(marketingData.view_to_like_ratio);
+      }
+
+      if (marketingData.comments_to_likes_ratio !== undefined) {
+        fields.push("comments_to_likes_ratio = ?");
+        params.push(marketingData.comments_to_likes_ratio);
+      }
+
+      if (marketingData.recency !== undefined) {
+        fields.push("recency = ?");
+        params.push(marketingData.recency);
+      }
+
+      if (marketingData.marketing_score !== undefined) {
+        fields.push("marketing_score = ?");
+        params.push(marketingData.marketing_score);
+      }
+
+      if (marketingData.days_since_published !== undefined) {
+        fields.push("days_since_published = ?");
+        params.push(marketingData.days_since_published);
+      }
+
+      // Если нет полей для обновления, возвращаем null
+      if (fields.length === 0) {
+        return null;
+      }
+
+      // Формируем запрос
+      query += fields.join(", ") + " WHERE id = ?";
+      params.push(reelId);
+
+      // Выполняем запрос
+      const statement = db.prepare(query);
+      const result = statement.run(...params);
+
+      // Если Reel не найден, возвращаем null
+      if (result.changes === 0) {
+        return null;
+      }
+
+      // Получаем обновленный Reel
+      const getReelStatement = db.prepare("SELECT * FROM ReelsContent WHERE id = ?");
+      const updatedReel = getReelStatement.get(reelId) as ReelContent;
+
+      return updatedReel;
+    } catch (error) {
+      console.error("Ошибка при обновлении маркетинговых данных Reel в SQLite:", error);
+      return null;
+    }
+  }
+
+  // Заглушки для методов уведомлений
+
+  /**
+   * Получение настроек уведомлений пользователя
+   * @param userId ID пользователя
+   * @returns Настройки уведомлений или null, если не найдены
+   */
+  async getNotificationSettings(userId: number): Promise<any | null> {
+    console.warn(`[SqliteAdapter] getNotificationSettings не реализован для SQLite. userId: ${userId}`);
+    return null;
+  }
+
+  /**
+   * Сохранение настроек уведомлений пользователя
+   * @param settings Настройки уведомлений
+   * @returns Сохраненные настройки уведомлений
+   */
+  async saveNotificationSettings(settings: any): Promise<any> {
+    console.warn(`[SqliteAdapter] saveNotificationSettings не реализован для SQLite. settings: ${JSON.stringify(settings)}`);
+    return settings;
+  }
+
+  /**
+   * Обновление настроек уведомлений пользователя
+   * @param userId ID пользователя
+   * @param settings Настройки уведомлений для обновления
+   * @returns Обновленные настройки уведомлений
+   */
+  async updateNotificationSettings(userId: number, settings: any): Promise<any> {
+    console.warn(`[SqliteAdapter] updateNotificationSettings не реализован для SQLite. userId: ${userId}, settings: ${JSON.stringify(settings)}`);
+    return settings;
+  }
+
+  /**
+   * Получение пользователя по ID
+   * @param userId ID пользователя
+   * @returns Пользователь или null, если не найден
+   */
+  async getUserById(userId: number): Promise<User | null> {
+    console.warn(`[SqliteAdapter] getUserById не реализован для SQLite. userId: ${userId}`);
+    return null;
+  }
+
+  /**
+   * Получение новых Reels для проекта
+   * @param projectId ID проекта
+   * @param afterDate Дата, после которой считать Reels новыми
+   * @returns Массив новых Reels
+   */
+  async getNewReels(projectId: number, afterDate: string): Promise<ReelContent[]> {
+    console.warn(`[SqliteAdapter] getNewReels не реализован для SQLite. projectId: ${projectId}, afterDate: ${afterDate}`);
+    return [];
+  }
+
+  // Методы для работы с коллекциями Reels
+
+  /**
+   * Создание таблицы для коллекций Reels, если она не существует
+   */
+  private ensureReelsCollectionsTableExists(): void {
+    const db = this.ensureConnection();
+
+    try {
+      // Создаем таблицу для коллекций Reels, если она не существует
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS ReelsCollections (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          project_id INTEGER NOT NULL,
+          name TEXT NOT NULL,
+          description TEXT,
+          filter TEXT,
+          reels_ids TEXT,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          is_processed INTEGER DEFAULT 0,
+          processing_status TEXT,
+          processing_result TEXT,
+          content_format TEXT,
+          content_data TEXT,
+          FOREIGN KEY (project_id) REFERENCES Projects(id) ON DELETE CASCADE
+        )
+      `);
+    } catch (error) {
+      console.error("Ошибка при создании таблицы ReelsCollections:", error);
+    }
+  }
+
+  /**
+   * Создание коллекции Reels
+   * @param projectId ID проекта
+   * @param name Название коллекции
+   * @param description Описание коллекции
+   * @param filter Фильтр для Reels
+   * @param reelsIds Массив ID Reels для добавления в коллекцию
+   * @returns Созданная коллекция
+   */
+  async createReelsCollection(
+    projectId: number,
+    name: string,
+    description?: string,
+    filter?: ReelsFilter,
+    reelsIds?: string[]
+  ): Promise<ReelsCollection> {
+    const db = this.ensureConnection();
+
+    try {
+      // Проверяем, существует ли таблица для коллекций Reels
+      this.ensureReelsCollectionsTableExists();
+
+      // Преобразуем фильтр и массив ID Reels в JSON
+      const filterJson = filter ? JSON.stringify(filter) : null;
+      const reelsIdsJson = reelsIds ? JSON.stringify(reelsIds) : null;
+
+      // Создаем коллекцию
+      const statement = db.prepare(`
+        INSERT INTO ReelsCollections (
+          project_id, name, description, filter, reels_ids,
+          created_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      `);
+
+      const result = statement.run(
+        projectId,
+        name,
+        description || null,
+        filterJson,
+        reelsIdsJson
+      );
+
+      // Получаем созданную коллекцию
+      const collectionId = result.lastInsertRowid as number;
+      const getCollectionStatement = db.prepare("SELECT * FROM ReelsCollections WHERE id = ?");
+      const collection = getCollectionStatement.get(collectionId) as any;
+
+      // Преобразуем JSON обратно в объекты
+      return {
+        ...collection,
+        filter: collection.filter ? JSON.parse(collection.filter) : undefined,
+        reels_ids: collection.reels_ids ? JSON.parse(collection.reels_ids) : undefined,
+        is_processed: Boolean(collection.is_processed)
+      };
+    } catch (error) {
+      console.error("Ошибка при создании коллекции Reels в SQLite:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Получение коллекций Reels для проекта
+   * @param projectId ID проекта
+   * @returns Массив коллекций
+   */
+  async getReelsCollectionsByProjectId(projectId: number): Promise<ReelsCollection[]> {
+    const db = this.ensureConnection();
+
+    try {
+      // Проверяем, существует ли таблица для коллекций Reels
+      this.ensureReelsCollectionsTableExists();
+
+      // Получаем коллекции для проекта
+      const statement = db.prepare("SELECT * FROM ReelsCollections WHERE project_id = ? ORDER BY created_at DESC");
+      const collections = statement.all(projectId) as any[];
+
+      // Преобразуем JSON обратно в объекты
+      return collections.map(collection => ({
+        ...collection,
+        filter: collection.filter ? JSON.parse(collection.filter) : undefined,
+        reels_ids: collection.reels_ids ? JSON.parse(collection.reels_ids) : undefined,
+        is_processed: Boolean(collection.is_processed)
+      }));
+    } catch (error) {
+      console.error("Ошибка при получении коллекций Reels в SQLite:", error);
+      return [];
+    }
+  }
+
+  /**
+   * Получение коллекции Reels по ID
+   * @param collectionId ID коллекции
+   * @returns Коллекция или null, если не найдена
+   */
+  async getReelsCollectionById(collectionId: number): Promise<ReelsCollection | null> {
+    const db = this.ensureConnection();
+
+    try {
+      // Проверяем, существует ли таблица для коллекций Reels
+      this.ensureReelsCollectionsTableExists();
+
+      // Получаем коллекцию по ID
+      const statement = db.prepare("SELECT * FROM ReelsCollections WHERE id = ?");
+      const collection = statement.get(collectionId) as any;
+
+      // Если коллекция не найдена, возвращаем null
+      if (!collection) {
+        return null;
+      }
+
+      // Преобразуем JSON обратно в объекты
+      return {
+        ...collection,
+        filter: collection.filter ? JSON.parse(collection.filter) : undefined,
+        reels_ids: collection.reels_ids ? JSON.parse(collection.reels_ids) : undefined,
+        is_processed: Boolean(collection.is_processed)
+      };
+    } catch (error) {
+      console.error("Ошибка при получении коллекции Reels в SQLite:", error);
+      return null;
+    }
+  }
+
+  /**
+   * Обновление коллекции Reels
+   * @param collectionId ID коллекции
+   * @param data Данные для обновления
+   * @returns Обновленная коллекция или null, если не найдена
+   */
+  async updateReelsCollection(
+    collectionId: number,
+    data: Partial<ReelsCollection>
+  ): Promise<ReelsCollection | null> {
+    const db = this.ensureConnection();
+
+    try {
+      // Проверяем, существует ли таблица для коллекций Reels
+      this.ensureReelsCollectionsTableExists();
+
+      // Формируем запрос на обновление
+      let query = "UPDATE ReelsCollections SET updated_at = CURRENT_TIMESTAMP";
+      const params: any[] = [];
+
+      // Добавляем поля для обновления
+      if (data.name !== undefined) {
+        query += ", name = ?";
+        params.push(data.name);
+      }
+
+      if (data.description !== undefined) {
+        query += ", description = ?";
+        params.push(data.description);
+      }
+
+      if (data.filter !== undefined) {
+        query += ", filter = ?";
+        params.push(JSON.stringify(data.filter));
+      }
+
+      if (data.reels_ids !== undefined) {
+        query += ", reels_ids = ?";
+        params.push(JSON.stringify(data.reels_ids));
+      }
+
+      if (data.is_processed !== undefined) {
+        query += ", is_processed = ?";
+        params.push(data.is_processed ? 1 : 0);
+      }
+
+      if (data.processing_status !== undefined) {
+        query += ", processing_status = ?";
+        params.push(data.processing_status);
+      }
+
+      if (data.processing_result !== undefined) {
+        query += ", processing_result = ?";
+        params.push(data.processing_result);
+      }
+
+      if (data.content_format !== undefined) {
+        query += ", content_format = ?";
+        params.push(data.content_format);
+      }
+
+      if (data.content_data !== undefined) {
+        query += ", content_data = ?";
+        params.push(data.content_data);
+      }
+
+      // Добавляем условие по ID
+      query += " WHERE id = ?";
+      params.push(collectionId);
+
+      // Выполняем запрос
+      const statement = db.prepare(query);
+      const result = statement.run(...params);
+
+      // Если коллекция не найдена, возвращаем null
+      if (result.changes === 0) {
+        return null;
+      }
+
+      // Получаем обновленную коллекцию
+      return await this.getReelsCollectionById(collectionId);
+    } catch (error) {
+      console.error("Ошибка при обновлении коллекции Reels в SQLite:", error);
+      return null;
+    }
+  }
+
+  /**
+   * Удаление коллекции Reels
+   * @param collectionId ID коллекции
+   * @returns true, если коллекция успешно удалена, иначе false
+   */
+  async deleteReelsCollection(collectionId: number): Promise<boolean> {
+    const db = this.ensureConnection();
+
+    try {
+      // Проверяем, существует ли таблица для коллекций Reels
+      this.ensureReelsCollectionsTableExists();
+
+      // Удаляем коллекцию
+      const statement = db.prepare("DELETE FROM ReelsCollections WHERE id = ?");
+      const result = statement.run(collectionId);
+
+      // Возвращаем результат удаления
+      return result.changes > 0;
+    } catch (error) {
+      console.error("Ошибка при удалении коллекции Reels в SQLite:", error);
+      return false;
+    }
+  }
+
+  /**
+   * Обработка коллекции Reels и создание контента в выбранном формате
+   * @param collectionId ID коллекции
+   * @param format Формат контента ("text", "csv" или "json")
+   * @returns Обработанная коллекция или null, если не найдена
+   */
+  async processReelsCollection(
+    collectionId: number,
+    format: "text" | "csv" | "json"
+  ): Promise<ReelsCollection | null> {
+    try {
+      // Получаем коллекцию
+      const collection = await this.getReelsCollectionById(collectionId);
+      if (!collection) {
+        return null;
+      }
+
+      // Обновляем статус коллекции
+      await this.updateReelsCollection(collectionId, {
+        is_processed: true,
+        processing_status: "processing",
+        updated_at: new Date().toISOString()
+      });
+
+      // Создаем экземпляр сервиса для работы с коллекциями Reels
+      const collectionService = new ReelsCollectionService(this);
+
+      // Обрабатываем коллекцию
+      return await collectionService.processCollection(collectionId, format);
+    } catch (error) {
+      console.error("Ошибка при обработке коллекции Reels в SQLite:", error);
+
+      // Обновляем статус коллекции в случае ошибки
+      await this.updateReelsCollection(collectionId, {
+        is_processed: true,
+        processing_status: "failed",
+        processing_result: error instanceof Error ? error.message : String(error),
+        updated_at: new Date().toISOString()
+      });
+
+      return null;
+    }
   }
 
   /**

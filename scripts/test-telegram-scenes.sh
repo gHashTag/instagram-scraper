@@ -12,7 +12,7 @@ NC="\033[0m" # No Color
 echo -e "${BLUE}🧪 Запуск тестов для Telegram сцен...${NC}"
 
 # Запуск тестов для Telegram сцен
-bun test 'src/__tests__/unit/scenes' 'src/__tests__/unit/components' 'src/__tests__/examples' --no-cache
+bun test 'src/__tests__/unit/scenes' 'src/__tests__/unit/components' 'src/__tests__/examples' 'src/__tests__/framework/tests' --no-cache
 
 if [ $? -ne 0 ]; then
     echo -e "${RED}❌ Тесты для Telegram сцен не пройдены. Исправьте ошибки и попробуйте снова.${NC}"

@@ -56,10 +56,17 @@ export function generateProjectMenuKeyboard(projectId: number) {
     ],
     [
       Markup.button.callback(
-        "👀 Просмотреть Reels (TODO)",
-        `show_reels_${projectId}`
+        "👀 Просмотр Reels",
+        `reels_list_${projectId}`
       ),
     ],
+    [
+      Markup.button.callback(
+        "📋 Коллекции Reels",
+        `collections_project_${projectId}`
+      ),
+    ],
+
     [Markup.button.callback("🔙 Назад к проектам", "back_to_projects")],
   ]);
 }

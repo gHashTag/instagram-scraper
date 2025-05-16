@@ -7,6 +7,7 @@ import {
 } from "./components/project-keyboard";
 import { isValidProjectName } from "../utils/validation";
 import { logger } from "../logger";
+import { registerButtons } from "../utils/button-handler";
 
 export const projectScene = new Scenes.BaseScene<ScraperBotContext>(
   "instagram_scraper_projects"
@@ -99,7 +100,6 @@ export async function handleExitSceneAction(ctx: ScraperBotContext) {
     await ctx.answerCbQuery();
   }
 }
-projectScene.action("exit_scene", handleExitSceneAction);
 
 export async function handleCreateProjectAction(ctx: ScraperBotContext) {
   console.log("PROJECT_SCENE_DEBUG: handleCreateProjectAction triggered");
@@ -114,7 +114,6 @@ export async function handleCreateProjectAction(ctx: ScraperBotContext) {
     await ctx.answerCbQuery();
   }
 }
-projectScene.action("create_project", handleCreateProjectAction);
 
 export async function handleBackToProjectsAction(ctx: ScraperBotContext) {
   console.log("PROJECT_SCENE_DEBUG: handleBackToProjectsAction triggered");
@@ -123,7 +122,6 @@ export async function handleBackToProjectsAction(ctx: ScraperBotContext) {
   }
   await ctx.scene.reenter();
 }
-projectScene.action("back_to_projects", handleBackToProjectsAction);
 
 export async function handleProjectSelectionAction(ctx: ScraperBotContext) {
   console.log("PROJECT_SCENE_DEBUG: handleProjectSelectionAction triggered");
@@ -161,7 +159,6 @@ export async function handleProjectSelectionAction(ctx: ScraperBotContext) {
   }
   return;
 }
-projectScene.action(/project_(\d+)/, handleProjectSelectionAction);
 
 export async function handleManageHashtagsAction(ctx: ScraperBotContext) {
   console.log("PROJECT_SCENE_DEBUG: handleManageHashtagsAction triggered");
@@ -182,7 +179,6 @@ export async function handleManageHashtagsAction(ctx: ScraperBotContext) {
   await ctx.scene.enter("instagram_scraper_hashtags", { projectId: projectId });
   return;
 }
-projectScene.action(/manage_hashtags_(\d+)/, handleManageHashtagsAction);
 
 // Обработчик для запуска скрапинга
 export async function handleScrapeProjectAction(ctx: ScraperBotContext) {
@@ -202,7 +198,71 @@ export async function handleScrapeProjectAction(ctx: ScraperBotContext) {
   await ctx.scene.enter("instagram_scraper_scraping", { projectId: projectId });
   return;
 }
-projectScene.action(/scrape_project_(\d+)/, handleScrapeProjectAction);
+
+// Обработчик для просмотра Reels
+export async function handleReelsListAction(ctx: ScraperBotContext) {
+  console.log("PROJECT_SCENE_DEBUG: handleReelsListAction triggered");
+  const projectId = parseInt((ctx.match as unknown as RegExpExecArray)[1], 10);
+  if (isNaN(projectId)) {
+    logger.warn("[ProjectScene] Invalid project ID for reels from action match");
+    if (ctx.callbackQuery)
+      await ctx.answerCbQuery("Ошибка: неверный ID проекта.");
+    await ctx.scene.reenter();
+    return;
+  }
+  ctx.scene.session.currentProjectId = projectId;
+  if (ctx.callbackQuery) {
+    await ctx.answerCbQuery();
+  }
+  await ctx.scene.enter("instagram_scraper_reels", { projectId: projectId });
+  return;
+}
+
+// Регистрация обработчиков кнопок с использованием централизованного обработчика
+registerButtons(projectScene, [
+  {
+    id: "exit_scene",
+    handler: handleExitSceneAction,
+    errorMessage: "Произошла ошибка при выходе из меню проектов. Попробуйте еще раз.",
+    verbose: true
+  },
+  {
+    id: "create_project",
+    handler: handleCreateProjectAction,
+    errorMessage: "Произошла ошибка при создании проекта. Попробуйте еще раз.",
+    verbose: true
+  },
+  {
+    id: "back_to_projects",
+    handler: handleBackToProjectsAction,
+    errorMessage: "Произошла ошибка при возврате к списку проектов. Попробуйте еще раз.",
+    verbose: true
+  },
+  {
+    id: /project_(\d+)/,
+    handler: handleProjectSelectionAction,
+    errorMessage: "Произошла ошибка при выборе проекта. Попробуйте еще раз.",
+    verbose: true
+  },
+  {
+    id: /manage_hashtags_(\d+)/,
+    handler: handleManageHashtagsAction,
+    errorMessage: "Произошла ошибка при переходе к управлению хештегами. Попробуйте еще раз.",
+    verbose: true
+  },
+  {
+    id: /scrape_project_(\d+)/,
+    handler: handleScrapeProjectAction,
+    errorMessage: "Произошла ошибка при запуске скрапинга. Попробуйте еще раз.",
+    verbose: true
+  },
+  {
+    id: /reels_list_(\d+)/,
+    handler: handleReelsListAction,
+    errorMessage: "Произошла ошибка при просмотре Reels. Попробуйте еще раз.",
+    verbose: true
+  }
+]);
 
 // --- Text Handler (Обработчик текстовых сообщений) ---
 export async function handleProjectText(ctx: ScraperBotContext) {

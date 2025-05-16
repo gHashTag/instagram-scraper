@@ -8,18 +8,21 @@
 
 ```
 src/__tests__/
-├── helpers/                  # Вспомогательные инструменты для тестирования
-│   └── telegram/             # Фреймворк для тестирования Telegram-сцен
-│       ├── assertions.ts     # Утилиты для проверки состояния сцены
-│       ├── index.ts          # Экспорт всех компонентов фреймворка
-│       ├── mocks.ts          # Функции для создания моков
-│       ├── README.md         # Документация по фреймворку
-│       ├── scene-tester.ts   # Класс для тестирования сцен
-│       ├── sequence-tester.ts # Класс для тестирования последовательностей действий
-│       ├── test-generators.ts # Генераторы тестов
-│       ├── test-templates.ts # Шаблоны для типичных сценариев тестирования
-│       ├── types.ts          # Типы и интерфейсы
-│       └── ui-mocks.ts       # Моки для UI-элементов
+├── framework/                # Фреймворк для тестирования
+│   ├── telegram/             # Компоненты для тестирования Telegram-ботов
+│   │   ├── assertions.ts     # Утилиты для проверки состояния сцены
+│   │   ├── index.ts          # Экспорт всех компонентов фреймворка
+│   │   ├── mocks.ts          # Функции для создания моков
+│   │   ├── scene-tester.ts   # Класс для тестирования сцен
+│   │   ├── sequence-tester.ts # Класс для тестирования последовательностей действий
+│   │   ├── test-generators.ts # Генераторы тестов
+│   │   └── types.ts          # Типы и интерфейсы
+│   ├── README.md             # Документация по фреймворку
+│   └── tests/                # Тесты для фреймворка
+│       └── framework.test.ts # Тесты для компонентов фреймворка
+├── examples/                 # Примеры использования фреймворка
+│   ├── chatbot-scene-example.test.ts # Пример тестирования чат-бота
+│   └── telegram-scene-test-example.test.ts # Пример тестирования Telegram-сцены
 ├── e2e/                     # End-to-end тесты
 │   ├── project-scene.e2e.test.ts    # E2E тесты для сцены проектов
 │   ├── competitor-scene.e2e.test.ts # E2E тесты для сцены конкурентов
@@ -38,7 +41,7 @@ src/__tests__/
 
 - **Bun Test** - встроенный в Bun фреймворк для тестирования, совместимый с Jest API
 - **TypeScript** - для типизации тестов и проверки типов
-- **Фреймворк для тестирования Telegram-сцен** - собственный фреймворк для упрощения тестирования Telegram-сцен
+- **Фреймворк для тестирования Telegram-ботов** (`src/__tests__/framework/telegram/`) - собственный фреймворк для упрощения тестирования Telegram-ботов
 
 ## Запуск тестов
 
@@ -58,38 +61,70 @@ bun test --pattern "project-scene"
 bun test --watch
 ```
 
-## Фреймворк для тестирования Telegram-сцен
+## Фреймворк для тестирования Telegram-ботов
 
-Для тестирования Telegram-сцен в проекте разработан специальный фреймворк, который упрощает создание и поддержку тестов. Фреймворк предоставляет инструменты для создания моков, тестирования обработчиков и проверки состояния сцены.
+Для тестирования Telegram-ботов в проекте разработан специальный фреймворк, который упрощает создание и поддержку тестов. Фреймворк предоставляет инструменты для создания моков, тестирования обработчиков и проверки состояния сцены.
 
 ### Основные компоненты фреймворка
 
 1. **SceneTester** - класс для тестирования Telegram-сцен
-2. **SceneSequenceTester** - класс для тестирования последовательностей действий
-3. **Генераторы тестов** - функции для генерации тестов для обработчиков
+2. **SequenceTester** - класс для тестирования последовательностей действий
+3. **Генераторы тестов** - функции для генерации типовых тестов
 4. **Утилиты для проверки состояния** - функции для проверки состояния сцены и отправленных сообщений
-5. **Моки для UI-элементов** - функции для создания моков инлайн-клавиатур и других UI-элементов
-6. **Шаблоны для типичных сценариев** - функции для создания типичных сценариев тестирования
+5. **Моки** - функции для создания моков контекста и адаптера хранилища
 
-Подробная документация по фреймворку доступна в файле [src/__tests__/helpers/telegram/README.md](./helpers/telegram/README.md).
+### Преимущества фреймворка
 
-### Пример использования фреймворка
+- Чистая и модульная архитектура
+- Строгая типизация
+- Гибкие инструменты для создания моков
+- Поддержка тестирования последовательностей действий
+- Генераторы типовых тестов
+- Подробная документация
+
+Подробная документация по фреймворку доступна в файле [src/__tests__/framework/README.md](./framework/README.md).
+
+### Примеры использования фреймворка
+
+Примеры использования фреймворка доступны в директории `src/__tests__/examples/`.
 
 ```typescript
 import { describe, it, expect, beforeEach } from "bun:test";
-import { SceneTester, generateEnterHandlerTests } from "../../helpers/telegram";
-import { ProjectScene } from "../../../scenes/project-scene";
+import { SceneTester, expectReplyWithText } from "../../framework/telegram";
+import { projectScene } from "../../../scenes/project-scene";
 
 describe("ProjectScene - Enter Handler", () => {
   // Создаем тестер сцены
   const sceneTester = new SceneTester({
     sceneName: "ProjectScene",
     sceneFilePath: "../../../scenes/project-scene",
-    sceneConstructor: ProjectScene
+    sceneInstance: projectScene
   });
 
-  // Генерируем тесты для обработчика входа в сцену
-  generateEnterHandlerTests(sceneTester);
+  // Создаем тестовый набор
+  sceneTester.createTestSuite([
+    {
+      name: "should handle enter correctly",
+      setup: (tester) => {
+        // Настройка контекста и адаптера
+        const context = tester.getContext();
+        context.scene.session.currentProjectId = 1;
+
+        const adapter = tester.getAdapter();
+        adapter.getProjectById = jest.fn().mockResolvedValue({
+          id: 1,
+          name: "Test Project"
+        });
+      },
+      test: async (scene, context, adapter) => {
+        // Вызываем метод enter
+        await (scene as any).enter(context);
+
+        // Проверяем результаты
+        expectReplyWithText(context, "Проект: Test Project");
+      }
+    }
+  ]);
 });
 ```
 
@@ -161,174 +196,143 @@ describe("Date Utils", () => {
 
 #### 2.0. Прямое тестирование обработчиков сцен
 
-Новый подход к тестированию сцен заключается в прямом вызове обработчиков с мокированным контекстом, что упрощает тестирование и делает тесты более понятными:
+Прямой подход к тестированию сцен заключается в вызове обработчиков с мокированным контекстом, что упрощает тестирование и делает тесты более понятными:
 
 ```typescript
 import { describe, it, expect, beforeEach, jest } from "bun:test";
 import { handleProjectEnter, handleCreateProjectAction } from "../../../scenes/project-scene";
 import { ScraperSceneStep } from "../../../types";
+import { createMockContext, createMockAdapter } from "../../framework/telegram";
 
 describe("E2E: Project Scene", () => {
-  let mockContext: any;
-  let mockStorage: any;
-
-  beforeEach(() => {
-    // Создаем мок для хранилища
-    mockStorage = {
+  it("should show empty projects list when entering scene", async () => {
+    // Создаем мок для контекста и адаптера
+    const mockContext = createMockContext();
+    const mockAdapter = createMockAdapter({
       initialize: jest.fn().mockResolvedValue(undefined),
       close: jest.fn().mockResolvedValue(undefined),
       getUserByTelegramId: jest.fn().mockResolvedValue({
         id: 1,
         telegram_id: 123456789,
       }),
-      // Другие методы...
-    };
+      getProjectsByUserId: jest.fn().mockResolvedValue([])
+    });
 
-    // Создаем мок для контекста
-    mockContext = {
-      from: { id: 123456789, username: "testuser" },
-      scene: { session: {}, enter: jest.fn(), leave: jest.fn() },
-      reply: jest.fn().mockResolvedValue({}),
-      // Другие методы...
-      storage: mockStorage,
-    };
-  });
+    // Добавляем адаптер в контекст
+    mockContext.storage = mockAdapter;
 
-  it("should show empty projects list when entering scene", async () => {
     // Вызываем обработчик входа в сцену
     await handleProjectEnter(mockContext);
 
     // Проверяем, что были вызваны нужные методы
-    expect(mockStorage.initialize).toHaveBeenCalled();
-    expect(mockStorage.getUserByTelegramId).toHaveBeenCalledWith(123456789);
-    // Другие проверки...
+    expect(mockAdapter.initialize).toHaveBeenCalled();
+    expect(mockAdapter.getUserByTelegramId).toHaveBeenCalledWith(123456789);
+    expect(mockContext.reply).toHaveBeenCalled();
   });
 });
 
-#### 2.1. Тестирование обработчика входа в сцену
+#### 2.1. Тестирование с использованием SceneTester
 
 ```typescript
-import { describe, it, expect, beforeEach } from "bun:test";
-import { SceneTester, generateEnterHandlerTests } from "../../helpers/telegram";
-import { ProjectScene } from "../../../scenes/project-scene";
+import { describe, it, expect } from "bun:test";
+import { SceneTester, expectReplyWithText } from "../../framework/telegram";
+import { projectScene } from "../../../scenes/project-scene";
 
 describe("ProjectScene - Enter Handler", () => {
   const sceneTester = new SceneTester({
     sceneName: "ProjectScene",
     sceneFilePath: "../../../scenes/project-scene",
-    sceneConstructor: ProjectScene
+    sceneInstance: projectScene
   });
 
-  generateEnterHandlerTests(sceneTester);
+  sceneTester.createTestSuite([
+    {
+      name: "should handle enter correctly",
+      setup: (tester) => {
+        // Настройка контекста и адаптера
+        const adapter = tester.getAdapter();
+        adapter.getUserByTelegramId = jest.fn().mockResolvedValue({
+          id: 1,
+          telegram_id: 123456789
+        });
+        adapter.getProjectsByUserId = jest.fn().mockResolvedValue([
+          { id: 1, name: "Test Project" }
+        ]);
+      },
+      test: async (scene, context, adapter) => {
+        // Вызываем метод enter
+        await (scene as any).enter(context);
+
+        // Проверяем результаты
+        expectReplyWithText(context, "Ваши проекты");
+      }
+    }
+  ]);
 });
 ```
 
-#### 2.2. Тестирование обработчиков действий
+#### 2.2. Тестирование последовательностей действий
 
 ```typescript
-import { describe, it, expect, beforeEach } from "bun:test";
-import { SceneTester, generateActionHandlerTests } from "../../helpers/telegram";
-import { ProjectScene } from "../../../scenes/project-scene";
-
-describe("ProjectScene - Action Handlers", () => {
-  const sceneTester = new SceneTester({
-    sceneName: "ProjectScene",
-    sceneFilePath: "../../../scenes/project-scene",
-    sceneConstructor: ProjectScene
-  });
-
-  generateActionHandlerTests(
-    sceneTester,
-    "handleSelectProjectAction" as keyof ProjectScene,
-    "project"
-  );
-});
-```
-
-#### 2.3. Тестирование обработчиков текстовых сообщений
-
-```typescript
-import { describe, it, expect, beforeEach } from "bun:test";
-import { SceneTester, generateTextHandlerTests } from "../../helpers/telegram";
-import { ProjectScene } from "../../../scenes/project-scene";
-import { ScraperSceneStep } from "../../../types";
-
-describe("ProjectScene - Text Input Handler", () => {
-  const sceneTester = new SceneTester({
-    sceneName: "ProjectScene",
-    sceneFilePath: "../../../scenes/project-scene",
-    sceneConstructor: ProjectScene
-  });
-
-  generateTextHandlerTests(
-    sceneTester,
-    "handleProjectSceneText" as keyof ProjectScene,
-    "CREATE_PROJECT",
-    ScraperSceneStep.CREATE_PROJECT
-  );
-});
-```
-
-#### 2.4. Тестирование последовательностей действий
-
-```typescript
-import { describe, it, expect, beforeEach } from "bun:test";
-import { SceneTester, SceneSequenceTester, expectSceneStep, expectMessageContaining } from "../../helpers/telegram";
-import { ProjectScene } from "../../../scenes/project-scene";
+import { describe } from "bun:test";
+import { SequenceTester, expectReplyWithText } from "../../framework/telegram";
+import { projectScene } from "../../../scenes/project-scene";
 import { ScraperSceneStep } from "../../../types";
 
 describe("ProjectScene - Full Scenario", () => {
-  it("should handle full project creation scenario", async () => {
-    const sceneTester = new SceneTester({
-      sceneName: "ProjectScene",
-      sceneFilePath: "../../../scenes/project-scene",
-      sceneConstructor: ProjectScene
-    });
-
-    sceneTester.updateAdapter({
-      getUserByTelegramId: jest.fn().mockResolvedValue({ id: 1, telegram_id: 123456789 }),
-      getProjectsByUserId: jest.fn().mockResolvedValue([]),
-      createProject: jest.fn().mockResolvedValue({ id: 1, name: "New Project" })
-    });
-
-    const sequenceTester = new SceneSequenceTester(sceneTester);
-
-    sequenceTester
-      .addSceneEnter(
-        "Enter scene",
-        "enterHandler",
-        {},
-        (tester) => {
-          expectMessageContaining(tester.getContext(), "У вас нет проектов");
-        }
-      )
-      .addButtonClick(
-        "Click create project button",
-        "create_project",
-        "handleCreateProjectAction" as keyof ProjectScene,
-        {},
-        (tester) => {
-          expectSceneStep(tester.getContext(), ScraperSceneStep.CREATE_PROJECT);
-          expectMessageContaining(tester.getContext(), "Введите название проекта");
-        }
-      )
-      .addTextInput(
-        "Enter project name",
-        "New Project",
-        "handleProjectSceneText" as keyof ProjectScene,
-        {
-          sessionData: {
-            step: ScraperSceneStep.CREATE_PROJECT
-          }
-        },
-        (tester) => {
-          expectMessageContaining(tester.getContext(), "Проект успешно создан");
-        }
-      );
-
-    await sequenceTester.run();
+  const sequenceTester = new SequenceTester({
+    sceneName: "ProjectScene",
+    sceneFilePath: "../../../scenes/project-scene",
+    sceneInstance: projectScene
   });
+
+  sequenceTester.testSequence("Project Creation", [
+    {
+      name: "Enter scene",
+      action: async (tester) => {
+        const scene = tester.createScene();
+        const context = tester.getContext();
+        const adapter = tester.getAdapter();
+
+        // Настройка адаптера
+        adapter.getUserByTelegramId = jest.fn().mockResolvedValue({
+          id: 1,
+          telegram_id: 123456789
+        });
+        adapter.getProjectsByUserId = jest.fn().mockResolvedValue([]);
+
+        // Вызываем метод enter
+        await (scene as any).enter(context);
+      },
+      assertions: (tester) => {
+        const context = tester.getContext();
+        expectReplyWithText(context, "У вас еще нет проектов");
+      }
+    },
+    {
+      name: "Click create project button",
+      action: async (tester) => {
+        const scene = tester.createScene();
+        const context = tester.getContext();
+
+        // Настройка контекста
+        context.callbackQuery = {
+          ...context.callbackQuery,
+          data: "create_project"
+        };
+
+        // Вызываем обработчик
+        await (scene as any).handleCreateProjectAction(context);
+      },
+      assertions: (tester) => {
+        const context = tester.getContext();
+        expect(context.scene.session.step).toBe(ScraperSceneStep.CREATE_PROJECT);
+        expectReplyWithText(context, "Введите название");
+      }
+    }
+  ]);
 });
+
 ```
 
 ### 3. Интеграционное тестирование
@@ -539,5 +543,6 @@ it("should test project creation sequence", async () => {
 ## Дополнительные ресурсы
 
 - [Документация по Bun Test](https://bun.sh/docs/cli/test)
-- [Документация по фреймворку для тестирования Telegram-сцен](./helpers/telegram/README.md)
+- [Документация по фреймворку для тестирования Telegram-ботов](./framework/README.md)
+- [Примеры использования фреймворка](./examples/)
 - [Примеры тестов в проекте](./unit/scenes/)

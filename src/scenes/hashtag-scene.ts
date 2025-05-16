@@ -4,6 +4,7 @@ import { NeonAdapter } from "../adapters/neon-adapter";
 import { ScraperSceneStep, ScraperSceneSessionData } from "@/types";
 // import { PAGINATION_LIMIT } from "./components/keyboard-pagination"; // Удаляем этот импорт
 // import { User } from "../types"; // Remove unused import
+import { registerButtons } from "../utils/button-handler";
 
 /**
  * Обработчик входа в сцену управления хештегами
@@ -51,7 +52,15 @@ export async function handleHashtagEnter(
         .join("\n");
       const hashtagButtons = hashtags.map((h) => [
         Markup.button.callback(
-          `🗑️ Удалить #${h.hashtag}`,
+          `#${h.hashtag}`,
+          `hashtag_${projectId}_${h.id}`
+        ),
+        Markup.button.callback(
+          `👀`,
+          `reels_list_${projectId}_hashtag_${h.id}`
+        ),
+        Markup.button.callback(
+          `🗑️`,
           `delete_hashtag_${projectId}_${h.hashtag}`
         ),
       ]);
@@ -261,13 +270,70 @@ export const hashtagScene = new Scenes.BaseScene<
 
 // Привязываем экспортированные обработчики к событиям сцены
 hashtagScene.enter(handleHashtagEnter);
-hashtagScene.action(/add_hashtag_(\d+)/, handleAddHashtagAction);
-hashtagScene.action(
-  /cancel_hashtag_input_(\d+)/,
-  handleCancelHashtagInputAction
-);
 hashtagScene.on("text", handleHashtagTextInput);
-hashtagScene.action(/delete_hashtag_(\d+)_(.+)/, handleDeleteHashtagAction);
-hashtagScene.action(/project_(\d+)/, handleBackToProjectAction);
+
+// Обработчик для просмотра Reels хештега
+export async function handleReelsListAction(
+  ctx: ScraperBotContext
+) {
+  const match = ctx.match as unknown as RegExpExecArray;
+  const projectId = parseInt(match[1], 10);
+  const sourceType = match[2] as "hashtag";
+  const hashtagId = parseInt(match[3], 10);
+
+  if (isNaN(projectId) || isNaN(hashtagId)) {
+    console.error(
+      `Invalid data parsed from reels_list action: projectId=${match[1]}, hashtagId=${match[3]}`
+    );
+    await ctx.reply("Ошибка при переходе к просмотру Reels.");
+    if (ctx.callbackQuery) await ctx.answerCbQuery("Ошибка");
+    return;
+  }
+
+  ctx.scene.session.currentProjectId = projectId;
+  ctx.scene.session.currentSourceType = sourceType;
+  ctx.scene.session.currentSourceId = hashtagId;
+
+  await ctx.answerCbQuery();
+  await ctx.scene.enter("instagram_scraper_reels", {
+    projectId,
+    sourceType,
+    sourceId: hashtagId
+  });
+}
+
+// Регистрация обработчиков кнопок с использованием централизованного обработчика
+registerButtons(hashtagScene, [
+  {
+    id: /add_hashtag_(\d+)/,
+    handler: handleAddHashtagAction,
+    errorMessage: "Произошла ошибка при добавлении хештега. Попробуйте еще раз.",
+    verbose: true
+  },
+  {
+    id: /cancel_hashtag_input_(\d+)/,
+    handler: handleCancelHashtagInputAction,
+    errorMessage: "Произошла ошибка при отмене ввода. Попробуйте еще раз.",
+    verbose: true
+  },
+  {
+    id: /delete_hashtag_(\d+)_(.+)/,
+    handler: handleDeleteHashtagAction,
+    errorMessage: "Произошла ошибка при удалении хештега. Попробуйте еще раз.",
+    verbose: true
+  },
+  {
+    id: /project_(\d+)/,
+    handler: handleBackToProjectAction,
+    errorMessage: "Произошла ошибка при возврате к проекту. Попробуйте еще раз.",
+    verbose: true
+  },
+  {
+    id: /reels_list_(\d+)_(.+)_(\d+)/,
+    handler: handleReelsListAction,
+    errorMessage: "Произошла ошибка при просмотре Reels. Попробуйте еще раз.",
+    verbose: true
+  }
+]);
 
 export default hashtagScene;

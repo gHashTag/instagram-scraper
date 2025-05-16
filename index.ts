@@ -10,6 +10,11 @@ import { competitorScene } from "./src/scenes/competitor-scene";
 import { projectScene } from "./src/scenes/project-scene";
 import { hashtagScene } from "./src/scenes/hashtag-scene";
 import { scrapingScene } from "./src/scenes/scraping-scene";
+import { reelsScene } from "./src/scenes/reels-scene";
+import { analyticsScene } from "./src/scenes/analytics-scene";
+import { notificationScene } from "./src/scenes/notification-scene";
+import { ReelsCollectionScene } from "./src/scenes/reels-collection-scene";
+import { ChatbotScene } from "./src/scenes/chatbot-scene";
 import type { Middleware } from "telegraf";
 import type {
   StorageAdapter,
@@ -74,6 +79,11 @@ export function setupInstagramScraperBot(
     competitorScene,
     hashtagScene,
     scrapingScene,
+    reelsScene,
+    analyticsScene,
+    notificationScene,
+    new ReelsCollectionScene(storageAdapter),
+    new ChatbotScene(storageAdapter, process.env.OPENAI_API_KEY),
     // Здесь будут добавляться другие сцены
   ]);
 
@@ -98,16 +108,65 @@ export function setupInstagramScraperBot(
   bot.command("scrape", (ctx) =>
     ctx.scene.enter("instagram_scraper_scraping")
   );
+  bot.command("reels", (ctx) =>
+    ctx.scene.enter("instagram_scraper_reels")
+  );
+  bot.command("analytics", (ctx) =>
+    ctx.scene.enter("instagram_scraper_analytics")
+  );
+  bot.command("notifications", (ctx) =>
+    ctx.scene.enter("instagram_scraper_notifications")
+  );
+  bot.command("collections", (ctx) =>
+    ctx.scene.enter("reels_collection_scene")
+  );
+  bot.command("chatbot", (ctx) =>
+    ctx.scene.enter("chatbot_scene")
+  );
 
   // Обработчики текстовых сообщений для меню
   bot.hears("📊 Проекты", (ctx) =>
     ctx.scene.enter("instagram_scraper_projects")
   );
-  bot.hears("🔍 Конкуренты", (ctx) =>
-    ctx.scene.enter("instagram_scraper_competitors")
-  );
+  bot.hears("🔍 Конкуренты", async (ctx) => {
+    console.log("[DEBUG] Обработчик кнопки '🔍 Конкуренты' вызван");
+    try {
+      // Проверяем наличие ctx.session и инициализируем, если отсутствует
+      if (!ctx.session) {
+        console.log("[DEBUG] Инициализируем ctx.session в обработчике кнопки 'Конкуренты'");
+        ctx.session = {};
+      }
+
+      // Проверяем наличие ctx.scene.session и инициализируем, если отсутствует
+      if (!ctx.scene.session) {
+        console.log("[DEBUG] Инициализируем ctx.scene.session в обработчике кнопки 'Конкуренты'");
+        (ctx.scene as any).session = {};
+      }
+
+      await ctx.scene.enter("instagram_scraper_competitors");
+      console.log("[DEBUG] Успешно вошли в сцену конкурентов");
+    } catch (error) {
+      console.error("[ERROR] Ошибка при входе в сцену конкурентов:", error);
+      await ctx.reply("Произошла ошибка при входе в режим управления конкурентами. Попробуйте еще раз.");
+    }
+  });
   bot.hears("🎬 Запустить скрапинг", (ctx) =>
     ctx.scene.enter("instagram_scraper_scraping")
+  );
+  bot.hears("👀 Просмотр Reels", (ctx) =>
+    ctx.scene.enter("instagram_scraper_reels")
+  );
+  bot.hears("📈 Аналитика", (ctx) =>
+    ctx.scene.enter("instagram_scraper_analytics")
+  );
+  bot.hears("🔔 Уведомления", (ctx) =>
+    ctx.scene.enter("instagram_scraper_notifications")
+  );
+  bot.hears("📋 Коллекции Reels", (ctx) =>
+    ctx.scene.enter("reels_collection_scene")
+  );
+  bot.hears("🤖 Чат-бот", (ctx) =>
+    ctx.scene.enter("chatbot_scene")
   );
 
   // Возвращаем API модуля
@@ -116,12 +175,19 @@ export function setupInstagramScraperBot(
     enterProjectScene: () => "instagram_scraper_projects",
     enterCompetitorScene: () => "instagram_scraper_competitors",
     enterScrapingScene: () => "instagram_scraper_scraping",
+    enterReelsScene: () => "instagram_scraper_reels",
+    enterAnalyticsScene: () => "instagram_scraper_analytics",
+    enterNotificationScene: () => "instagram_scraper_notifications",
+    enterReelsCollectionScene: () => "reels_collection_scene",
+    enterChatbotScene: () => "chatbot_scene",
 
     // Получение кнопок для меню
     getMenuButtons: () => [
       ["📊 Проекты", "🔍 Конкуренты"],
       ["#️⃣ Хэштеги", "🎬 Запустить скрапинг"],
-      ["📱 Результаты", "ℹ️ Помощь"],
+      ["👀 Просмотр Reels", "📈 Аналитика"],
+      ["🔔 Уведомления", "📋 Коллекции Reels"],
+      ["🤖 Чат-бот", "ℹ️ Помощь"],
     ],
 
     // Получение команд для регистрации в Telegram
@@ -130,7 +196,11 @@ export function setupInstagramScraperBot(
       { command: "competitors", description: "Управление конкурентами" },
       { command: "hashtags", description: "Управление хэштегами" },
       { command: "scrape", description: "Запустить скрапинг" },
-      { command: "reels", description: "Просмотр результатов" },
+      { command: "reels", description: "Просмотр Reels" },
+      { command: "analytics", description: "Аналитика данных" },
+      { command: "notifications", description: "Настройка уведомлений" },
+      { command: "collections", description: "Коллекции Reels" },
+      { command: "chatbot", description: "Чат-бот для общения с видео" },
     ],
   };
 }

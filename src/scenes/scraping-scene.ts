@@ -3,6 +3,7 @@ import type { ScraperBotContext } from "../types";
 import { ScraperSceneStep } from "../types";
 import { logger } from "../logger";
 import MockScraperService from "../services/mock-scraper-service";
+import { registerButtons } from "../utils/button-handler";
 
 /**
  * Сцена для управления скрапингом данных из Instagram
@@ -137,63 +138,88 @@ scrapingScene.enter(handleScrapingEnter);
 // Обработчик для скрапинга конкурентов
 export async function handleScrapeCompetitorsAction(ctx: ScraperBotContext): Promise<void> {
   logger.info("[ScrapingScene] handleScrapeCompetitorsAction triggered");
-
-  const projectId = parseInt((ctx.match as unknown as RegExpExecArray)[1], 10);
-  if (isNaN(projectId)) {
-    logger.warn("[ScrapingScene] Invalid project ID from action match");
-    if (ctx.callbackQuery) await ctx.answerCbQuery("Ошибка: неверный ID проекта.");
-    ctx.scene.reenter();
-    return;
-  }
-
-  ctx.scene.session.currentProjectId = projectId;
-  ctx.scene.session.step = ScraperSceneStep.SCRAPING_COMPETITORS;
+  console.log("[DEBUG] Обработчик кнопки 'Скрапить конкурентов' вызван");
+  console.log("[DEBUG] match:", ctx.match);
 
   try {
-    await ctx.storage.initialize();
+    const projectId = parseInt((ctx.match as unknown as RegExpExecArray)[1], 10);
+    console.log(`[DEBUG] Извлеченный projectId: ${projectId}`);
 
-    // Получаем список конкурентов
-    const competitors = await ctx.storage.getCompetitorAccounts(projectId, true);
-
-    if (competitors.length === 0) {
-      await ctx.answerCbQuery("У вас нет добавленных конкурентов.");
+    if (isNaN(projectId)) {
+      logger.warn("[ScrapingScene] Invalid project ID from action match");
+      console.error(`[ERROR] Невалидный projectId: ${(ctx.match as unknown as RegExpExecArray)[1]}`);
+      if (ctx.callbackQuery) await ctx.answerCbQuery("Ошибка: неверный ID проекта.");
       ctx.scene.reenter();
       return;
     }
 
-    // Формируем сообщение со списком конкурентов
-    let message = "👥 *Выберите конкурентов для скрапинга:*\n\n";
+    console.log(`[DEBUG] Установка projectId в сессии: ${projectId}`);
+    ctx.scene.session.currentProjectId = projectId;
+    ctx.scene.session.step = ScraperSceneStep.SCRAPING_COMPETITORS;
 
-    // Создаем клавиатуру с кнопками для выбора конкурентов
-    const keyboard = competitors.map((competitor) => [
-      Markup.button.callback(
-        competitor.username,
-        `scrape_competitor_${projectId}_${competitor.id}`
-      )
-    ]);
+    try {
+      await ctx.storage.initialize();
 
-    keyboard.push([Markup.button.callback("🔄 Скрапить всех конкурентов", `scrape_all_competitors_${projectId}`)]);
-    keyboard.push([Markup.button.callback("🔙 Назад", `back_to_scraping_menu`)]);
+      // Получаем список конкурентов
+      console.log(`[DEBUG] Получение списка конкурентов для проекта ${projectId}`);
+      const competitors = await ctx.storage.getCompetitorAccounts(projectId, true);
+      console.log(`[DEBUG] Получено конкурентов: ${competitors.length}`);
 
-    await ctx.editMessageText(message, {
-      parse_mode: "Markdown",
-      ...Markup.inlineKeyboard(keyboard)
-    });
+      if (competitors.length === 0) {
+        console.log("[DEBUG] Конкуренты не найдены");
+        await ctx.answerCbQuery("У вас нет добавленных конкурентов.");
+        ctx.scene.reenter();
+        return;
+      }
 
-    if (ctx.callbackQuery) {
-      await ctx.answerCbQuery();
+      // Формируем сообщение со списком конкурентов
+      let message = "👥 *Выберите конкурентов для скрапинга:*\n\n";
+
+      // Создаем клавиатуру с кнопками для выбора конкурентов
+      console.log("[DEBUG] Создание клавиатуры с кнопками для выбора конкурентов");
+      const keyboard = competitors.map((competitor) => [
+        Markup.button.callback(
+          competitor.username,
+          `scrape_competitor_${projectId}_${competitor.id}`
+        )
+      ]);
+
+      keyboard.push([Markup.button.callback("🔄 Скрапить всех конкурентов", `scrape_all_competitors_${projectId}`)]);
+      keyboard.push([Markup.button.callback("🔙 Назад", `back_to_scraping_menu`)]);
+
+      console.log("[DEBUG] Отправка сообщения с клавиатурой");
+      await ctx.editMessageText(message, {
+        parse_mode: "Markdown",
+        ...Markup.inlineKeyboard(keyboard)
+      });
+
+      if (ctx.callbackQuery) {
+        console.log("[DEBUG] Ответ на callback query");
+        await ctx.answerCbQuery();
+      }
+    } catch (error) {
+      logger.error("[ScrapingScene] Error in handleScrapeCompetitorsAction:", error);
+      console.error("[ERROR] Ошибка при загрузке конкурентов:", error);
+      await ctx.reply(
+        "Произошла ошибка при загрузке конкурентов. Попробуйте еще раз."
+      );
+    } finally {
+      console.log("[DEBUG] Закрытие соединения с БД");
+      await ctx.storage.close();
     }
   } catch (error) {
-    logger.error("[ScrapingScene] Error in handleScrapeCompetitorsAction:", error);
-    await ctx.reply(
-      "Произошла ошибка при загрузке конкурентов. Попробуйте еще раз."
-    );
-  } finally {
-    await ctx.storage.close();
+    console.error("[ERROR] Критическая ошибка в обработчике кнопки 'Скрапить конкурентов':", error);
+    try {
+      await ctx.reply("Произошла критическая ошибка. Пожалуйста, попробуйте еще раз.");
+      if (ctx.callbackQuery) await ctx.answerCbQuery("Ошибка").catch(() => {});
+    } catch (e) {
+      console.error("[ERROR] Не удалось отправить сообщение об ошибке:", e);
+    }
   }
 }
 
-scrapingScene.action(/scrape_competitors_(\d+)/, handleScrapeCompetitorsAction);
+// Регистрация обработчиков действий в сцене скрапинга
+console.log("[DEBUG] Регистрация обработчиков действий в сцене скрапинга");
 
 // Обработчик для скрапинга хештегов
 export async function handleScrapeHashtagsAction(ctx: ScraperBotContext): Promise<void> {
@@ -254,21 +280,28 @@ export async function handleScrapeHashtagsAction(ctx: ScraperBotContext): Promis
   }
 }
 
-scrapingScene.action(/scrape_hashtags_(\d+)/, handleScrapeHashtagsAction);
-
 // Обработчик для возврата в меню скрапинга
 export async function handleBackToScrapingMenuAction(ctx: ScraperBotContext): Promise<void> {
   logger.info("[ScrapingScene] handleBackToScrapingMenuAction triggered");
+  console.log("[DEBUG] Обработчик кнопки 'Назад к меню скрапинга' вызван");
 
-  if (ctx.callbackQuery) {
-    await ctx.answerCbQuery();
+  try {
+    if (ctx.callbackQuery) {
+      await ctx.answerCbQuery();
+    }
+
+    console.log("[DEBUG] Возврат в меню скрапинга через reenter");
+    ctx.scene.reenter();
+    return;
+  } catch (error) {
+    console.error("[ERROR] Ошибка в обработчике кнопки 'Назад к меню скрапинга':", error);
+    try {
+      await ctx.reply("Произошла ошибка при возврате в меню скрапинга. Попробуйте еще раз.");
+    } catch (e) {
+      console.error("[ERROR] Не удалось отправить сообщение об ошибке:", e);
+    }
   }
-
-  ctx.scene.reenter();
-  return;
 }
-
-scrapingScene.action("back_to_scraping_menu", handleBackToScrapingMenuAction);
 
 // Обработчик для возврата к проекту
 export async function handleBackToProjectAction(ctx: ScraperBotContext): Promise<void> {
@@ -368,8 +401,6 @@ export async function handleScrapeCompetitorAction(ctx: ScraperBotContext): Prom
   }
 }
 
-scrapingScene.action(/scrape_competitor_(\d+)_(\d+)/, handleScrapeCompetitorAction);
-
 // Обработчик для скрапинга конкретного хештега
 export async function handleScrapeHashtagAction(ctx: ScraperBotContext): Promise<void> {
   logger.info("[ScrapingScene] handleScrapeHashtagAction triggered");
@@ -448,8 +479,6 @@ export async function handleScrapeHashtagAction(ctx: ScraperBotContext): Promise
     await ctx.storage.close();
   }
 }
-
-scrapingScene.action(/scrape_hashtag_(\d+)_(\d+)/, handleScrapeHashtagAction);
 
 // Обработчик для скрапинга всех конкурентов
 export async function handleScrapeAllCompetitorsAction(ctx: ScraperBotContext): Promise<void> {
@@ -546,8 +575,6 @@ export async function handleScrapeAllCompetitorsAction(ctx: ScraperBotContext): 
   }
 }
 
-scrapingScene.action(/scrape_all_competitors_(\d+)/, handleScrapeAllCompetitorsAction);
-
 // Обработчик для скрапинга всех хештегов
 export async function handleScrapeAllHashtagsAction(ctx: ScraperBotContext): Promise<void> {
   logger.info("[ScrapingScene] handleScrapeAllHashtagsAction triggered");
@@ -642,8 +669,6 @@ export async function handleScrapeAllHashtagsAction(ctx: ScraperBotContext): Pro
     await ctx.storage.close();
   }
 }
-
-scrapingScene.action(/scrape_all_hashtags_(\d+)/, handleScrapeAllHashtagsAction);
 
 // Обработчик для скрапинга всего (конкуренты + хештеги)
 export async function handleScrapeAllAction(ctx: ScraperBotContext): Promise<void> {
@@ -767,9 +792,109 @@ export async function handleScrapeAllAction(ctx: ScraperBotContext): Promise<voi
   }
 }
 
-scrapingScene.action(/scrape_all_(\d+)/, handleScrapeAllAction);
+// Обработчик для просмотра результатов скрапинга
+export async function handleShowReelsAction(ctx: ScraperBotContext): Promise<void> {
+  logger.info("[ScrapingScene] handleShowReelsAction triggered");
 
-scrapingScene.action(/project_(\d+)/, handleBackToProjectAction);
+  const match = ctx.match as unknown as RegExpExecArray;
+  const projectId = parseInt(match[1], 10);
+  const sourceType = match[2] as "competitor" | "hashtag";
+  const sourceId = match[3];
+
+  if (isNaN(projectId)) {
+    logger.warn("[ScrapingScene] Invalid project ID from action match");
+    if (ctx.callbackQuery) await ctx.answerCbQuery("Ошибка: неверный ID проекта.");
+    ctx.scene.reenter();
+    return;
+  }
+
+  ctx.scene.session.currentProjectId = projectId;
+
+  if (sourceType && sourceId) {
+    ctx.scene.session.currentSourceType = sourceType;
+    ctx.scene.session.currentSourceId = sourceId;
+  }
+
+  if (ctx.callbackQuery) {
+    await ctx.answerCbQuery();
+  }
+
+  ctx.scene.enter("instagram_scraper_reels", {
+    projectId,
+    sourceType,
+    sourceId
+  });
+}
+
+// Регистрация обработчиков кнопок с использованием централизованного обработчика
+registerButtons(scrapingScene, [
+  {
+    id: /scrape_competitors_(\d+)/,
+    handler: handleScrapeCompetitorsAction,
+    errorMessage: "Произошла ошибка при скрапинге конкурентов. Попробуйте еще раз.",
+    verbose: true
+  },
+  {
+    id: /scrape_hashtags_(\d+)/,
+    handler: handleScrapeHashtagsAction,
+    errorMessage: "Произошла ошибка при скрапинге хештегов. Попробуйте еще раз.",
+    verbose: true
+  },
+  {
+    id: "back_to_scraping_menu",
+    handler: handleBackToScrapingMenuAction,
+    errorMessage: "Произошла ошибка при возврате в меню скрапинга. Попробуйте еще раз.",
+    verbose: true
+  },
+  {
+    id: /project_(\d+)/,
+    handler: handleBackToProjectAction,
+    errorMessage: "Произошла ошибка при возврате к проекту. Попробуйте еще раз.",
+    verbose: true
+  },
+  {
+    id: /scrape_competitor_(\d+)_(\d+)/,
+    handler: handleScrapeCompetitorAction,
+    errorMessage: "Произошла ошибка при скрапинге конкурента. Попробуйте еще раз.",
+    verbose: true
+  },
+  {
+    id: /scrape_hashtag_(\d+)_(\d+)/,
+    handler: handleScrapeHashtagAction,
+    errorMessage: "Произошла ошибка при скрапинге хештега. Попробуйте еще раз.",
+    verbose: true
+  },
+  {
+    id: /scrape_all_competitors_(\d+)/,
+    handler: handleScrapeAllCompetitorsAction,
+    errorMessage: "Произошла ошибка при скрапинге всех конкурентов. Попробуйте еще раз.",
+    verbose: true
+  },
+  {
+    id: /scrape_all_hashtags_(\d+)/,
+    handler: handleScrapeAllHashtagsAction,
+    errorMessage: "Произошла ошибка при скрапинге всех хештегов. Попробуйте еще раз.",
+    verbose: true
+  },
+  {
+    id: /scrape_all_(\d+)/,
+    handler: handleScrapeAllAction,
+    errorMessage: "Произошла ошибка при полном скрапинге. Попробуйте еще раз.",
+    verbose: true
+  },
+  {
+    id: /show_reels_(.+)_(.+)_(.+)/,
+    handler: handleShowReelsAction,
+    errorMessage: "Произошла ошибка при просмотре результатов. Попробуйте еще раз.",
+    verbose: true
+  },
+  {
+    id: /show_reels_project_(\d+)/,
+    handler: handleShowReelsAction,
+    errorMessage: "Произошла ошибка при просмотре результатов. Попробуйте еще раз.",
+    verbose: true
+  }
+]);
 
 // Экспортируем сцену
 export default scrapingScene;

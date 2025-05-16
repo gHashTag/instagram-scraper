@@ -3,6 +3,7 @@ import { Telegraf, session, Markup /*, MemorySessionStore*/ } from "telegraf";
 // import { Scenes } from "telegraf"; // Удаляем неиспользуемый импорт Scenes
 import { NeonAdapter } from "./adapters/neon-adapter";
 import { setupInstagramScraperBot } from "../index"; // Импортируем функцию настройки из корневого index.ts
+import { logger, LogLevel, LogType } from "./utils/logger"; // Импортируем логгер
 import type {
   ScraperBotContext,
   InstagramScraperBotConfig,
@@ -76,13 +77,16 @@ async function ensureUserMiddleware(
 
     // +++ Добавляем лог перед присвоением ctx.user +++
     console.log(
-      `[DEBUG] ensureUserMiddleware: Присвоение ctx.scene.session.user для ${telegramId}. Пользователь:`,
+      `[DEBUG] ensureUserMiddleware: Присвоение ctx.session.user для ${telegramId}. Пользователь:`,
       JSON.stringify(user)
     );
-    ctx.scene.session.user = user; // <<< ИЗМЕНЕНО ctx.session НА ctx.scene.session >>>
+    if (!ctx.session) {
+      ctx.session = {};
+    }
+    ctx.session.user = user; // Используем ctx.session вместо ctx.scene.session
     // +++ Добавляем лог после присвоения ctx.user +++
     console.log(
-      `[DEBUG] ensureUserMiddleware: ctx.scene.session.user успешно присвоено для ${telegramId}.`
+      `[DEBUG] ensureUserMiddleware: ctx.session.user успешно присвоено для ${telegramId}.`
     );
   } catch (error) {
     console.error(
@@ -107,6 +111,13 @@ async function ensureUserMiddleware(
 async function startBot() {
   dotenv.config(); // Убрали явный path, используем стандартный поиск .env
 
+  // Инициализация логгера
+  logger.configure({
+    logToConsole: true,
+    minLevel: LogLevel.DEBUG
+  });
+  logger.info("Запуск бота", { type: LogType.SYSTEM });
+
   const BOT_TOKEN = process.env.BOT_TOKEN;
   const DATABASE_URL = process.env.DATABASE_URL; // Проверяем наличие, т.к. адаптер использует его внутри
 
@@ -127,23 +138,26 @@ async function startBot() {
     console.log("Запуск бота из src/bot.ts...");
     const bot = new Telegraf<ScraperBotContext>(BOT_TOKEN);
 
-    // <<< Используем ЯВНОЕ хранилище в памяти >>>
-    // bot.use(session({ store: new MemorySessionStore() })); // Явно указываем хранилище
-    bot.use(session()); // <<< Используем store по умолчанию (MemorySessionStore) >>>
+    // Используем session middleware из Telegraf
+    const { session } = require('telegraf');
+    bot.use(session());
 
-    // +++ Добавляем лог СРАЗУ ПОСЛЕ session() +++
+    // Добавляем свой middleware для логирования сессии
     bot.use((ctx, next) => {
-      console.log(
-        "[DEBUG] После bot.use(session()): ctx.session существует?",
-        !!ctx.scene.session
-      );
-      // <<< Раскомментируем лог контекста >>>
-      if (!ctx.scene.session) {
-        console.log(
-          "[DEBUG] ctx object (если session нет):",
-          JSON.stringify(ctx, null, 2)
-        );
+      console.log("[DEBUG] Проверка сессии в middleware");
+
+      // Логируем наличие сессии
+      console.log("[DEBUG] ctx.session существует?", !!ctx.session);
+
+      // Инициализируем ctx.session, если его нет (хотя session middleware должен это делать)
+      if (!ctx.session) {
+        console.log("[DEBUG] ctx.session не существует, создаем");
+        (ctx as any).session = {
+          user: null,
+          __scenes: {}
+        };
       }
+
       return next();
     });
 
@@ -175,7 +189,7 @@ async function startBot() {
     // <<< Добавляем обработчик команды /start >>>
     bot.start(async (ctx) => {
       const username =
-        ctx.scene.session.user?.username ||
+        ctx.session?.user?.username ||
         ctx.from?.first_name ||
         "пользователь";
       const welcomeMessage = `Привет, ${username}! Чем могу помочь?`;
@@ -189,30 +203,26 @@ async function startBot() {
       await ctx.reply(welcomeMessage, mainMenuKeyboard);
     });
 
-    // Обработчик ошибок Telegraf (можно раскомментировать и настроить logger)
-    // bot.catch((err: any, ctx: ScraperBotContext) => {
-    //   console.error(`Ошибка Telegraf для ${ctx.updateType}`, err);
-    //   ctx.reply("Упс, что-то пошло не так. Попробуйте еще раз позже.").catch(e => console.error("Ошибка отправки сообщения об ошибке", e));
-    // });
+    // Обработчик ошибок Telegraf
+    bot.catch((err: any, ctx: ScraperBotContext) => {
+      console.error(`Ошибка Telegraf для ${ctx.updateType}`, err);
+      ctx.reply("Упс, что-то пошло не так. Попробуйте еще раз позже.").catch(e => console.error("Ошибка отправки сообщения об ошибке", e));
+    });
 
     // Глобальный middleware для логирования всех входящих обновлений
     bot.use(async (ctx, next) => {
       // Добавляем ctx.scene.session если его нет (важно для команд вне сцен)
       // console.log("[DEBUG] Global middleware: Начало обработки ctx.update", JSON.stringify(ctx.update, null, 2));
       // console.log("[DEBUG] Global middleware: Текущий ctx.scene", JSON.stringify(ctx.scene, null, 2));
-      // console.log("[DEBUG] Global middleware: Наличие ctx.session", !!ctx.scene.session); // Изменено
-      // console.log("[DEBUG] Global middleware: Наличие ctx.scene.session", !!ctx.scene.session);
+      // console.log("[DEBUG] Global middleware: Наличие ctx.session", !!ctx.session);
+      // console.log("[DEBUG] Global middleware: Наличие ctx.scene?.session", !!ctx.scene?.session);
 
-      // Проверяем наличие ctx.scene.session и инициализируем, если отсутствует
-      // Это нужно, чтобы ctx.scene.session всегда было доступно,
+      // Проверяем наличие ctx.session и инициализируем, если отсутствует
+      // Это нужно, чтобы ctx.session всегда было доступно,
       // даже для команд, которые не входят в сцены (например /start, /help)
-      if (!ctx.scene) {
-        // console.log("[DEBUG] Global middleware: ctx.scene отсутствует, инициализируем пустым объектом (это не должно происходить с telegraf-session-local)");
-        // (ctx as any).scene = { session: {} }; // Временное решение, если sessionMiddleware не отработал
-      } else if (!ctx.scene.session) {
-        // Изменено
-        // console.log("[DEBUG] Global middleware: ctx.scene.session отсутствует, инициализируем пустым объектом");
-        // ctx.scene.session = {} as ScraperSceneSessionData; // Инициализация значением по умолчанию
+      if (!ctx.session) {
+        console.log("[DEBUG] Global middleware: ctx.session отсутствует, инициализируем пустым объектом");
+        ctx.session = {}; // Инициализация значением по умолчанию
       }
 
       // Явное создание сессии, если ее нет. Это может быть необходимо для команд, не входящих в сцены.
