@@ -15,8 +15,11 @@
 
 ### Основные компоненты
 
-- **Сцены** (`/scenes`) - компоненты Telegraf для взаимодействия с пользователем
-- **Хранилище** (`/storage`) - адаптеры для работы с различными базами данных (Neon, In-Memory, SQLite)
+- **Сцены** (`/scenes`) - компоненты Telegraf для взаимодействия с пользователем:
+  - `project-scene.ts`: Управление проектами (просмотр, создание).
+  - `competitor-scene.ts`: Управление конкурентами (просмотр, добавление) в рамках выбранного проекта.
+  - `components/`: Переиспользуемые UI-компоненты для клавиатур.
+- **Хранилище/Адаптеры** (`/adapters`) - адаптеры для работы с базами данных. Основной адаптер `NeonAdapter` (`/adapters/neon-adapter.ts`) обеспечивает взаимодействие с Neon DB и интегрирован в сцены управления проектами и конкурентами.
 - **Агент** (`/agent`) - логика скрапинга Instagram (через Apify)
 - **Типы** (`/types`) - TypeScript интерфейсы и типы
 - **Скрипты** (`/scripts`) - утилиты для разработки и тестирования
@@ -24,10 +27,10 @@
 ## Использование
 
 ```typescript
-import { createInstagramScraperBot } from "./modules/instagram-scraper-bot"
-import { Telegraf } from "telegraf"
+import { createInstagramScraperBot } from "./modules/instagram-scraper-bot";
+import { Telegraf } from "telegraf";
 
-const bot = new Telegraf(process.env.BOT_TOKEN)
+const bot = new Telegraf(process.env.BOT_TOKEN);
 
 // Создаем инстанс модуля с настройками
 const scraperBot = createInstagramScraperBot({
@@ -35,14 +38,27 @@ const scraperBot = createInstagramScraperBot({
   apifyToken: process.env.APIFY_TOKEN,
   minViews: 50000,
   maxAgeDays: 14,
-})
+});
 
 // Регистрируем middleware модуля в боте
-bot.use(scraperBot)
+bot.use(scraperBot);
 
 // Запускаем бота
-bot.launch()
+bot.launch();
 ```
+
+### Пользовательский Интерфейс (Сцены)
+
+Взаимодействие с модулем происходит через команды Telegram:
+
+- `/projects`: Запускает сцену `projectScene`, где пользователь может:
+  - Просмотреть список своих проектов.
+  - Создать новый проект, введя его название.
+  - Выбрать существующий проект для дальнейших действий (пока не реализовано полностью).
+- `/competitors`: Запускает сцену `competitorScene`, где пользователь может:
+  - Выбрать проект (если их несколько).
+  - Просмотреть список конкурентов для выбранного проекта.
+  - Добавить нового конкурента, введя URL его Instagram-профиля.
 
 ## Локальная разработка
 
@@ -68,7 +84,7 @@ export NEON_DATABASE_URL=sqlite:///.dev/sqlite.db
 Модуль предоставляет мок-сервис для Apify API для тестирования без реальных запросов:
 
 ```typescript
-import { mockScrapeInstagramReels } from "./__tests__/mocks/apify-mock"
+import { mockScrapeInstagramReels } from "./__tests__/mocks/apify-mock";
 
 // Использование мок-функции для тестирования
 const reels = await mockScrapeInstagramReels(
@@ -78,7 +94,7 @@ const reels = await mockScrapeInstagramReels(
     minViews: 50000,
     maxAgeDays: 14,
   }
-)
+);
 ```
 
 ### 3. Автоматизированное тестирование
@@ -92,7 +108,19 @@ bun run build
 
 # Запуск интеграционных тестов с моками внешних зависимостей
 bash scripts/test-integration.sh
+
+# Запуск тестов для Telegram-сцен
+bash scripts/test-telegram-scenes.sh
 ```
+
+#### Документация по тестированию
+
+Для разработчиков доступна подробная документация по тестированию:
+
+- [Общая документация по тестированию](./src/__tests__/README.md) - структура тестов, инструменты, команды и паттерны
+- [Паттерны тестирования Telegram-сцен](./src/__tests__/TESTING_PATTERNS.md) - подробное описание паттернов тестирования сцен
+- [Фреймворк для тестирования Telegram-сцен](./src/__tests__/helpers/telegram/README.md) - документация по фреймворку для тестирования сцен
+- [E2E тестирование Telegram-бота](./src/__tests__/E2E_TESTING.md) - подробное описание подхода к E2E тестированию
 
 ## Настройка окружения
 
@@ -125,6 +153,12 @@ PARSING_LIMIT=100         # Лимит Reels для получения с Apify 
 - Руководство по автономной разработке
 - Примеры использования инструментов разработки
 - Советы по отладке и решению частых проблем
+
+### Документация по тестированию
+
+- [Общая документация по тестированию](./src/__tests__/README.md) - структура тестов, инструменты, команды и паттерны
+- [Паттерны тестирования Telegram-сцен](./src/__tests__/TESTING_PATTERNS.md) - подробное описание паттернов тестирования сцен
+- [Фреймворк для тестирования Telegram-сцен](./src/__tests__/helpers/telegram/README.md) - документация по фреймворку для тестирования сцен
 
 ## Будущие улучшения для автономной разработки
 

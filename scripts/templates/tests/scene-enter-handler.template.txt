@@ -1,0 +1,86 @@
+import { describe, it, expect, jest, beforeEach, afterEach } from "bun:test";
+import { Context, Scenes } from "telegraf";
+import { Message } from "telegraf/typings/core/types/typegram";
+import { StorageAdapter } from "@/types";
+import { {{SCENE_NAME}} } from "@/scenes/{{SCENE_FILE_NAME}}";
+
+// Мокируем адаптер хранилища
+const mockAdapter: jest.Mocked<StorageAdapter> = {
+  findUserByTelegramIdOrCreate: jest.fn(),
+  getProjectsByUserId: jest.fn(),
+  getProjectById: jest.fn(),
+  createProject: jest.fn(),
+  getCompetitorAccounts: jest.fn(),
+  addCompetitorAccount: jest.fn(),
+  deleteCompetitorAccount: jest.fn(),
+  getHashtagsByProjectId: jest.fn(),
+  addHashtag: jest.fn(),
+  removeHashtag: jest.fn(),
+  getParsingRunLogs: jest.fn(),
+  close: jest.fn(),
+  ensureConnection: jest.fn(),
+};
+
+describe("{{SCENE_NAME}} - Enter Handler", () => {
+  // Создаем моки для контекста Telegraf
+  let ctx: Context & { scene: Scenes.SceneContext; from?: { id: number } };
+  let scene: {{SCENE_NAME}};
+
+  beforeEach(() => {
+    // Сбрасываем все моки перед каждым тестом
+    jest.clearAllMocks();
+
+    // Создаем новый экземпляр сцены для каждого теста
+    scene = new {{SCENE_NAME}}(mockAdapter);
+
+    // Создаем мок контекста
+    ctx = {
+      scene: {
+        enter: jest.fn(),
+        reenter: jest.fn(),
+        leave: jest.fn(),
+        state: {},
+      } as unknown as Scenes.SceneContext,
+      reply: jest.fn().mockResolvedValue({} as Message.TextMessage),
+      from: { id: 123456789 },
+    } as Context & { scene: Scenes.SceneContext; from?: { id: number } };
+  });
+
+  afterEach(() => {
+    // Очищаем все моки после каждого теста
+    jest.clearAllMocks();
+  });
+
+  it("should handle successful scene entry", async () => {
+    // Настраиваем моки для успешного сценария
+    mockAdapter.findUserByTelegramIdOrCreate.mockResolvedValue({ id: 1, telegram_id: 123456789 });
+    mockAdapter.getProjectsByUserId.mockResolvedValue([
+      { id: 1, name: "Test Project", user_id: 1 },
+    ]);
+
+    // Вызываем обработчик входа в сцену
+    await scene.enterHandler(ctx);
+
+    // Проверяем, что были вызваны нужные методы
+    expect(mockAdapter.findUserByTelegramIdOrCreate).toHaveBeenCalledWith(123456789);
+    expect(mockAdapter.getProjectsByUserId).toHaveBeenCalledWith(1);
+    expect(ctx.reply).toHaveBeenCalled();
+    expect(mockAdapter.close).toHaveBeenCalled();
+  });
+
+  it("should handle error when user is not found", async () => {
+    // Настраиваем моки для сценария с ошибкой
+    mockAdapter.findUserByTelegramIdOrCreate.mockResolvedValue(null);
+
+    // Вызываем обработчик входа в сцену
+    await scene.enterHandler(ctx);
+
+    // Проверяем, что были вызваны нужные методы
+    expect(mockAdapter.findUserByTelegramIdOrCreate).toHaveBeenCalledWith(123456789);
+    expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining("ошибка"));
+    expect(ctx.scene.leave).toHaveBeenCalled();
+    expect(mockAdapter.close).toHaveBeenCalled();
+  });
+
+  // Добавьте дополнительные тесты для других сценариев
+});

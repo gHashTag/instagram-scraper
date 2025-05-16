@@ -1,14 +1,42 @@
-import { Context, Scenes } from "telegraf";
+import { Context as TelegrafContext, Scenes } from "telegraf";
+import {
+  User,
+  Project,
+  Competitor,
+  Hashtag,
+  ReelContent,
+  ReelsFilter,
+  ParsingRunLog,
+  NotificationSettings,
+  ReelsCollection
+} from "./schemas";
 
-// Placeholder for project types
-export {};
+// Реэкспортируем типы для обратной совместимости
+export type {
+  User,
+  Project,
+  Competitor,
+  Hashtag,
+  ReelContent,
+  ReelsFilter,
+  ParsingRunLog,
+  NotificationSettings,
+  ReelsCollection
+};
 
-// Базовый контекст Telegraf, расширенный для нужд бота
-export interface ScraperBotContext extends Context {
-  storage?: StorageAdapter;
+// Базовый интерфейс для контекста Telegraf с добавлением поддержки сцен
+export interface ScraperBotContext extends TelegrafContext {
+  storage: StorageAdapter;
+  config: InstagramScraperBotConfig;
   scraperConfig?: InstagramScraperBotConfig;
-  // Добавляем session к Scenes.SceneContextScene для типизации ctx.scene.session
+  // Добавляем session для поддержки сессии в контексте
+  session?: Scenes.SceneSession<ScraperSceneSessionData> & {
+    user?: User;
+    [key: string]: any;
+  };
+  // Возвращаем тип к SceneContextScene, который включает и контекст, и сессию
   scene: Scenes.SceneContextScene<ScraperBotContext, ScraperSceneSessionData>;
+  match?: RegExpExecArray | null;
 }
 
 // Адаптер для хранения данных
@@ -16,7 +44,18 @@ export interface StorageAdapter {
   initialize(): Promise<void>;
   close(): Promise<void>;
   getUserByTelegramId(telegramId: number): Promise<User | null>;
-  createUser(telegramId: number, username?: string): Promise<User>;
+  createUser(
+    telegramId: number,
+    username?: string,
+    firstName?: string,
+    lastName?: string
+  ): Promise<User>;
+  findUserByTelegramIdOrCreate(
+    telegramId: number,
+    username?: string,
+    firstName?: string,
+    lastName?: string
+  ): Promise<User>;
   getProjectsByUserId(userId: number): Promise<Project[]>;
   createProject(userId: number, name: string): Promise<Project>;
   getProjectById(projectId: number): Promise<Project | null>;
@@ -24,16 +63,29 @@ export interface StorageAdapter {
     projectId: number,
     username: string,
     instagramUrl: string
-  ): Promise<Competitor>;
+  ): Promise<Competitor | null>;
   getCompetitorAccounts(
     projectId: number,
     activeOnly?: boolean
   ): Promise<Competitor[]>;
-  addHashtag(projectId: number, name: string): Promise<Hashtag>;
+  getCompetitorsByProjectId?(projectId: number): Promise<Competitor[]>; // Опциональный метод для обратной совместимости
+  deleteCompetitorAccount(
+    projectId: number,
+    username: string
+  ): Promise<boolean>;
+  addHashtag(projectId: number, name: string): Promise<Hashtag | null>;
   getTrackingHashtags(
     projectId: number,
     activeOnly?: boolean
   ): Promise<Hashtag[]>;
+  getHashtagsByProjectId(projectId: number): Promise<Hashtag[] | null>;
+  removeHashtag(projectId: number, hashtag: string): Promise<void>;
+  getReelsByCompetitorId(
+    competitorId: number,
+    filter: any
+  ): Promise<any[]>;
+  // Метод для получения Reels по ID проекта (используется в тестах)
+  getReelsByProjectId?(projectId: number, filter?: any): Promise<ReelContent[]>;
   saveReels(
     reels: Partial<ReelContent>[],
     projectId: number,
@@ -41,91 +93,127 @@ export interface StorageAdapter {
     sourceId: string | number
   ): Promise<number>;
   getReels(filter?: ReelsFilter): Promise<ReelContent[]>;
+  // Методы для работы с Reels
+  getReelById?(reelId: string): Promise<ReelContent | null>;
+  getReelsCount?(filter?: ReelsFilter): Promise<number>;
+  getReelsByProjectId?(projectId: number, filter?: ReelsFilter): Promise<ReelContent[]>;
+  getReelsByHashtagId?(hashtagId: number, filter?: ReelsFilter): Promise<ReelContent[]>;
+
   logParsingRun(log: Partial<ParsingRunLog>): Promise<ParsingRunLog>;
+  // Алиас для logParsingRun (используется в тестах)
+  createParsingLog?(log: Partial<ParsingRunLog>): Promise<ParsingRunLog>;
+  // Алиас для обновления лога парсинга (используется в тестах)
+  updateParsingLog?(log: Partial<ParsingRunLog>): Promise<ParsingRunLog>;
+  getParsingRunLogs(
+    targetType: "competitor" | "hashtag",
+    targetId: string
+  ): Promise<ParsingRunLog[]>;
+  // Метод для получения логов парсинга по ID проекта (используется в тестах)
+  getParsingLogsByProjectId?(projectId: number): Promise<ParsingRunLog[]>;
+
+  // Методы для работы с уведомлениями
+  getNotificationSettings(userId: number): Promise<NotificationSettings | null>;
+  saveNotificationSettings(settings: Partial<NotificationSettings>): Promise<NotificationSettings>;
+  updateNotificationSettings(userId: number, settings: Partial<NotificationSettings>): Promise<NotificationSettings>;
+  getUserById(userId: number): Promise<User | null>;
+  getNewReels(projectId: number, afterDate: string): Promise<ReelContent[]>;
+
+  // Методы для работы с маркетинговыми данными
+  calculateMarketingData?(reel: ReelContent, averageFollowers?: number): Promise<ReelContent>;
+  updateReelMarketingData?(reelId: number, marketingData: Partial<ReelContent>): Promise<ReelContent | null>;
+  getReelsWithMarketingData?(filter?: ReelsFilter): Promise<ReelContent[]>;
+
+  // Методы для работы с коллекциями Reels
+  createReelsCollection?(projectId: number, name: string, description?: string, filter?: ReelsFilter, reelsIds?: string[]): Promise<ReelsCollection>;
+  getReelsCollectionsByProjectId?(projectId: number): Promise<ReelsCollection[]>;
+  getReelsCollectionById?(collectionId: number): Promise<ReelsCollection | null>;
+  updateReelsCollection?(collectionId: number, data: Partial<ReelsCollection>): Promise<ReelsCollection | null>;
+  deleteReelsCollection?(collectionId: number): Promise<boolean>;
+  processReelsCollection?(collectionId: number, format: "text" | "csv" | "json"): Promise<ReelsCollection | null>;
+
+  // Методы для работы с расшифровками видео
+  updateReel?(reelId: string, data: Partial<ReelContent>): Promise<ReelContent | null>;
+  getReelById?(reelId: string): Promise<ReelContent | null>;
+
+  // Метод для выполнения произвольных SQL-запросов
+  executeQuery(query: string, params?: any[]): Promise<any>;
   // TODO: Добавить остальные методы по мере необходимости
 }
 
-export interface User {
-  id: number;
-  telegram_id: number;
-  username?: string;
-  created_at: string;
-  is_active: boolean;
-  user_id?: number; // Сделал опциональным для упрощения моков
-}
+// Типы User, Project, Competitor, Hashtag и ReelContent теперь импортируются из ./schemas
 
-export interface Project {
-  id: number;
-  user_id: number;
-  name: string;
-  created_at: string;
-  is_active: boolean;
-}
-
-export interface Competitor {
-  id: number;
-  project_id: number;
-  username: string;
-  instagram_url: string;
-  created_at: string;
-  is_active: boolean;
-}
-
-export interface Hashtag {
-  id: number;
-  project_id: number;
-  name: string;
-  created_at: string;
-  is_active: boolean;
-}
-
-// Определяем ReelContent (ранее Reel, чтобы избежать конфликта с возможным Reel из telegraf)
-export interface ReelContent {
-  id?: number; // Сделал опциональным, т.к. при сохранении его еще нет
-  instagram_id: string;
-  url: string;
-  caption?: string; // Было description, используется как caption в sqlite-adapter
-  views?: number; // Было views, используется как view_count в sqlite-adapter
-  likes?: number; // Было likes, используется как like_count в sqlite-adapter
-  comments_count?: number; // Уже было comments_count
-  published_at: string; // Или Date
-  author_username?: string; // Уже было author_username, используется как owner_username в sqlite-adapter
-  author_id?: string; // Было author_url, используется как owner_id (хотя там URL, тут ID)
-  music_title?: string; // Уже было music_title, используется как audio_title в sqlite-adapter
-  duration?: number; // Добавлено, используется в sqlite-adapter
-  thumbnail_url?: string;
-  project_id: number;
-  source_type: "competitor" | "hashtag";
-  source_id: string | number;
-  created_at?: string;
-}
-
+// Конфигурация для бота
 export interface InstagramScraperBotConfig {
-  // Пока пусто, добавим по мере необходимости
-  apifyToken?: string;
+  apifyClientToken?: string; // Made optional as it might not always be configured
+  telegramBotToken: string;
+  webhookDomain?: string;
+  // TODO: Добавить другие необходимые параметры конфигурации
 }
 
-// Шаги в сценах
+// Шаги сцены
 export enum ScraperSceneStep {
-  ADD_PROJECT = "ADD_PROJECT",
-  ADD_COMPETITOR = "ADD_COMPETITOR",
-  ADD_HASHTAG = "ADD_HASHTAG",
-  // ... другие шаги
-  CREATE_PROJECT = "CREATE_PROJECT", // Используется в project-scene.test.ts
+  PROJECT_LIST = "PROJECT_LIST", // Шаг для отображения списка проектов
+  CREATE_PROJECT = "CREATE_PROJECT",
+  PROJECT_MENU = "PROJECT_MENU",
+  COMPETITOR_LIST = "COMPETITOR_LIST", // Добавлен для сцены конкурентов
+  ADD_COMPETITOR = "ADD_COMPETITOR", // Добавлен для сцены конкурентов
+  DELETE_COMPETITOR = "DELETE_COMPETITOR", // Добавлен для сцены конкурентов
+  HASHTAG_LIST = "HASHTAG_LIST", // Добавлен для сцены хештегов
+  ADD_HASHTAG = "ADD_HASHTAG", // Добавлен для сцены хештегов
+  SCRAPING_MENU = "SCRAPING_MENU", // Добавлен для сцены скрапинга
+  SCRAPING_COMPETITORS = "SCRAPING_COMPETITORS", // Добавлен для сцены скрапинга
+  SCRAPING_HASHTAGS = "SCRAPING_HASHTAGS", // Добавлен для сцены скрапинга
+  SCRAPING_PROGRESS = "SCRAPING_PROGRESS", // Добавлен для сцены скрапинга
+  SCRAPING_RESULTS = "SCRAPING_RESULTS", // Добавлен для сцены скрапинга
+  REELS_LIST = "REELS_LIST", // Добавлен для сцены просмотра Reels
+  REEL_DETAILS = "REEL_DETAILS", // Добавлен для сцены просмотра Reels
+  REELS_FILTER = "REELS_FILTER", // Добавлен для сцены просмотра Reels
+  REELS_ANALYTICS = "REELS_ANALYTICS", // Добавлен для сцены просмотра Reels
+  NOTIFICATION_SETTINGS = "NOTIFICATION_SETTINGS", // Добавлен для сцены уведомлений
+  NOTIFICATION_SCHEDULE = "NOTIFICATION_SCHEDULE", // Добавлен для сцены уведомлений
+  REELS_COLLECTIONS = "REELS_COLLECTIONS", // Добавлен для сцены коллекций Reels
+  CREATE_COLLECTION = "CREATE_COLLECTION", // Добавлен для сцены создания коллекции
+  COLLECTION_DETAILS = "COLLECTION_DETAILS", // Добавлен для сцены просмотра коллекции
+  EXPORT_COLLECTION = "EXPORT_COLLECTION", // Добавлен для сцены экспорта коллекции
+  TRANSCRIBE_REEL = "TRANSCRIBE_REEL", // Добавлен для сцены расшифровки Reel
+  EDIT_TRANSCRIPT = "EDIT_TRANSCRIPT", // Добавлен для сцены редактирования расшифровки
+  CHATBOT = "CHATBOT", // Добавлен для сцены чат-бота
+  CHATBOT_REEL_LIST = "CHATBOT_REEL_LIST" // Добавлен для сцены выбора Reel для чат-бота
 }
 
-// Данные сессии для сцен
+// Тип ScraperSceneSessionData теперь импортируется из ./schemas
+// Но мы расширяем его для совместимости с Telegraf
 export interface ScraperSceneSessionData extends Scenes.SceneSessionData {
   step?: ScraperSceneStep;
-  currentProjectId?: number; // ID текущего проекта для сцены
-  currentCompetitorId?: number; // ID текущего конкурента
-  messageIdToEdit?: number; // ID сообщения для редактирования (например, список)
-  projectId?: number; // Добавлено для хранения ID проекта в сессии сцены
+  currentProjectId?: number;
+  currentCompetitorId?: number;
+  messageIdToEdit?: number;
+  projectId?: number;
+  user?: User;
+  // Поля для сцены просмотра Reels
+  currentReelId?: string;
+  currentSourceType?: "competitor" | "hashtag";
+  currentSourceId?: string | number;
+  reelsFilter?: ReelsFilter;
+  reelsPage?: number;
+  reelsPerPage?: number;
+  // Поля для сцены коллекций Reels
+  currentCollectionId?: number;
+  collectionName?: string;
+  collectionDescription?: string;
+  selectedReelsIds?: string[];
+  contentFormat?: "text" | "csv" | "json";
+  contentData?: string;
+
+  // Поля для сцены расшифровки Reels
+  transcriptLanguage?: string;
+  transcriptText?: string;
+  transcriptEdited?: boolean;
 }
 
 // Тип для MiddlewareFn, если он не импортируется из telegraf/types
 // (Telegraf V4 использует `Middleware<TContext> `)
-export type Middleware<TContext extends Context> = (
+export type Middleware<TContext extends TelegrafContext> = (
   ctx: TContext,
   next: () => Promise<void>
 ) => Promise<void> | void;
@@ -169,35 +257,7 @@ export interface ScrapedReel extends InstagramReel {
   // Могут быть дополнительные поля после обработки
 }
 
-export interface ReelsFilter {
-  projectId?: number;
-  sourceType?: "competitor" | "hashtag";
-  sourceId?: string | number;
-  minViews?: number;
-  maxAgeDays?: number; // Максимальный возраст публикации в днях
-  afterDate?: string; // ISO Timestamp, reels опубликованные после этой даты
-  beforeDate?: string; // ISO Timestamp, reels опубликованные до этой даты
-  limit?: number;
-  offset?: number;
-  orderBy?: string; // Поле для сортировки (например, 'published_at', 'views')
-  orderDirection?: "ASC" | "DESC";
-  is_processed?: boolean; // Добавлено для фильтрации по статусу обработки
-}
-
-export interface ParsingRunLog {
-  id?: string; // Уникальный ID записи лога (может быть UUID или автоинкремент)
-  run_id: string; // Уникальный ID конкретного запуска парсинга (например, UUID)
-  project_id: number;
-  source_type: "competitor" | "hashtag";
-  source_id: string | number; // ID конкурента или хэштега (может быть числом или строкой, если это username)
-  status: "running" | "completed" | "failed" | "partial_success";
-  started_at: string; // ISO Timestamp
-  ended_at?: string; // ISO Timestamp
-  reels_found_count?: number; // Опционально
-  reels_added_count?: number; // Опционально
-  errors_count?: number; // Опционально
-  error_message?: string;
-}
+// Типы ReelsFilter и ParsingRunLog теперь импортируются из ./schemas
 
 // Для использования в index.ts вместо any для Telegraf
 // export type BotType = Telegraf<ScraperBotContext>;

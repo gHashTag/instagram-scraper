@@ -1,186 +1,339 @@
-import { Scenes /*, Markup*/ } from "telegraf";
+import { Scenes, Markup } from "telegraf";
+import type { ScraperBotContext, Project } from "../types";
+import { ScraperSceneStep } from "../types";
 import {
-  ScraperBotContext,
-  ScraperSceneStep,
-  ScraperSceneSessionData,
-  // Убедимся, что StorageAdapter импортирован, если он используется для приведения типа
-  // StorageAdapter,
-} from "@/types";
-import { generateProjectsKeyboard } from "./components/project-keyboard";
-import {
+  generateProjectsKeyboard,
   generateProjectMenuKeyboard,
-  generateNewProjectKeyboard,
 } from "./components/project-keyboard";
+import { isValidProjectName } from "../utils/validation";
+import { logger } from "../logger";
+import { registerButtons } from "../utils/button-handler";
 
-// УДАЛЯЕМ ИМПОРТ И СОЗДАНИЕ ЭКЗЕМПЛЯРА NeonAdapter НА УРОВНЕ МОДУЛЯ
-// import { NeonAdapter } from "../adapters/neon-adapter";
-// const neonAdapter = new NeonAdapter();
+export const projectScene = new Scenes.BaseScene<ScraperBotContext>(
+  "instagram_scraper_projects"
+);
 
-// Для ясности, что мы ожидаем NeonAdapter в ctx.storage
-import { NeonAdapter } from "../adapters/neon-adapter";
+// --- Command Handlers ---
+projectScene.command("start", async (ctx) => {
+  console.log("PROJECT_SCENE_DEBUG: command /start triggered");
+  await ctx.scene.enter("instagram_scraper_projects");
+});
 
-/**
- * Сцена для управления проектами
- */
-export const projectScene = new Scenes.BaseScene<
-  ScraperBotContext & { scene: { session: ScraperSceneSessionData } }
->("instagram_scraper_projects");
-
-// Вход в сцену - показываем список проектов
-projectScene.enter(async (ctx) => {
-  // Используем адаптер из контекста
-  const adapter = ctx.storage as NeonAdapter; // Приводим к NeonAdapter
-  if (!adapter) {
-    await ctx.reply("Ошибка: Адаптер хранилища не найден в контексте.");
+// --- Enter Scene Handler ---
+export async function handleProjectEnter(ctx: ScraperBotContext) {
+  console.log("PROJECT_SCENE_DEBUG: enter handler triggered");
+  if (!ctx.from) {
+    logger.error("projectScene.enter: ctx.from is undefined");
+    await ctx.reply(
+      "Не удалось определить пользователя. Попробуйте перезапустить бота командой /start."
+    );
     return ctx.scene.leave();
   }
 
-  try {
-    await adapter.initialize(); // Вызываем initialize на адаптере из контекста
+  const telegramId = ctx.from.id;
+  const username = ctx.from.username;
+  const firstName = ctx.from.first_name;
+  const lastName = ctx.from.last_name;
+  let userSession = ctx.scene.session;
+  userSession.step = undefined;
 
-    const user = await adapter.getUserByTelegramId(ctx.from?.id || 0);
+  try {
+    await ctx.storage.initialize();
+    logger.info(`[ProjectScene] User ${telegramId} entered project scene.`);
+
+    const user = await ctx.storage.findUserByTelegramIdOrCreate(
+      telegramId,
+      username,
+      firstName,
+      lastName
+    );
 
     if (!user) {
-      await ctx.reply(
-        "Вы не зарегистрированы. Пожалуйста, используйте сначала основные команды бота."
+      logger.error(
+        `[ProjectScene] Could not find or create user for telegram_id: ${telegramId}`
       );
-      // await adapter.close(); // Решение о close должно быть консистентным
+      await ctx.reply(
+        "Произошла ошибка при получении данных пользователя. Попробуйте позже."
+      );
       return ctx.scene.leave();
     }
-
-    const projects = await adapter.getProjectsByUserId(user.id as number);
-
-    await ctx.reply(
-      projects && projects.length > 0
-        ? "Ваши проекты:"
-        : "У вас пока нет проектов. Хотите создать новый?",
-      {
-        reply_markup: generateProjectsKeyboard(projects || []).reply_markup,
-      }
+    logger.info(
+      `[ProjectScene] User found/created: ${user.id} (tg: ${telegramId})`
     );
 
-    // await adapter.close(); // Решение о close должно быть консистентным
-  } catch (error) {
-    console.error("Ошибка при получении проектов:", error);
-    await ctx.reply(
-      "Произошла ошибка при получении проектов. Пожалуйста, попробуйте позже."
+    const projects: Project[] | null = await ctx.storage.getProjectsByUserId(
+      user.id
     );
-    // await adapter.close();
-    await ctx.scene.leave();
-  }
-});
 
-// Обработка выхода из сцены
-projectScene.action("exit_scene", async (ctx) => {
-  await ctx.answerCbQuery("Выход из режима управления проектами");
-  await ctx.reply("Вы вышли из режима управления проектами", {
-    reply_markup: { remove_keyboard: true },
-  });
-  return ctx.scene.leave();
-});
-
-// Обработка создания нового проекта
-projectScene.action("create_project", async (ctx) => {
-  await ctx.answerCbQuery();
-  await ctx.reply(
-    "Введите название нового проекта (например, 'Мой косметологический центр'):"
-  );
-  ctx.scene.session.step = ScraperSceneStep.ADD_PROJECT;
-});
-
-// Обработка текстовых сообщений
-projectScene.on("text", async (ctx) => {
-  const adapter = ctx.storage as NeonAdapter;
-  if (!adapter) {
-    await ctx.reply("Ошибка: Адаптер хранилища не найден в контексте.");
-    // Не выходим из сцены, чтобы пользователь мог попробовать еще раз или выйти командой
-    return;
-  }
-
-  if (ctx.scene.session.step === ScraperSceneStep.ADD_PROJECT) {
-    try {
-      await adapter.initialize();
-
-      const user = await adapter.getUserByTelegramId(ctx.from.id);
-      if (!user) {
-        await ctx.reply("Ошибка: пользователь не найден.");
-        // await adapter.close();
-        return ctx.scene.leave();
-      }
-
-      const projectName = ctx.message.text.trim();
-      if (projectName.length < 3) {
-        await ctx.reply(
-          "Название проекта должно содержать не менее 3 символов. Попробуйте еще раз:"
-        );
-        return;
-      }
-
-      const project = await adapter.createProject(
-        user.id as number,
-        projectName
-      );
-
-      if (project) {
-        await ctx.reply(`Проект "${projectName}" успешно создан!`, {
-          reply_markup: generateNewProjectKeyboard(project.id).reply_markup,
-        });
-      } else {
-        await ctx.reply("Ошибка при создании проекта. Попробуйте позже.");
-      }
-      ctx.scene.session.step = undefined;
-      // await adapter.close();
-    } catch (error) {
-      console.error("Ошибка при создании проекта:", error);
+    if (!projects || projects.length === 0) {
+      logger.info(`[ProjectScene] No projects found for user ${user.id}`);
       await ctx.reply(
-        "Произошла ошибка при создании проекта. Пожалуйста, попробуйте позже."
+        "У вас еще нет проектов. Хотите создать первый?",
+        generateProjectsKeyboard([])
       );
+      userSession.step = ScraperSceneStep.PROJECT_LIST;
+    } else {
+      logger.info(
+        `[ProjectScene] Found ${projects.length} projects for user ${user.id}`
+      );
+      await ctx.reply("Ваши проекты:", generateProjectsKeyboard(projects));
+      userSession.step = ScraperSceneStep.PROJECT_LIST;
     }
-  } else {
+  } catch (error) {
+    logger.error("[ProjectScene] Error in enter handler:", error);
     await ctx.reply(
-      "Я не понимаю эту команду. Используйте кнопки для управления проектами."
+      "Произошла ошибка при загрузке ваших проектов. Попробуйте еще раз."
     );
+    await ctx.scene.leave();
+  } finally {
+    await ctx.storage.close();
   }
-});
+}
+projectScene.enter(handleProjectEnter);
 
-// Обработка возврата к списку проектов
-projectScene.action("back_to_projects", async (ctx) => {
-  await ctx.answerCbQuery();
-  return ctx.scene.reenter();
-});
+// --- Action Handlers (Обработчики кнопок) ---
+export async function handleExitSceneAction(ctx: ScraperBotContext) {
+  console.log("PROJECT_SCENE_DEBUG: handleExitSceneAction triggered");
+  await ctx.reply("Вы вышли из меню проектов.");
+  await ctx.scene.leave();
+  if (ctx.callbackQuery) {
+    await ctx.answerCbQuery();
+  }
+}
 
-// Обработка выбора проекта
-projectScene.action(/project_(\d+)/, async (ctx) => {
-  const adapter = ctx.storage as NeonAdapter;
-  if (!adapter) {
-    await ctx.reply("Ошибка: Адаптер хранилища не найден в контексте.");
+export async function handleCreateProjectAction(ctx: ScraperBotContext) {
+  console.log("PROJECT_SCENE_DEBUG: handleCreateProjectAction triggered");
+  ctx.scene.session.step = ScraperSceneStep.CREATE_PROJECT;
+  await ctx.reply(
+    "Введите название нового проекта (например, 'Клиника Аврора МСК'):",
+    Markup.inlineKeyboard([
+      Markup.button.callback("Отмена", "back_to_projects"),
+    ])
+  );
+  if (ctx.callbackQuery) {
+    await ctx.answerCbQuery();
+  }
+}
+
+export async function handleBackToProjectsAction(ctx: ScraperBotContext) {
+  console.log("PROJECT_SCENE_DEBUG: handleBackToProjectsAction triggered");
+  if (ctx.callbackQuery) {
+    await ctx.answerCbQuery();
+  }
+  await ctx.scene.reenter();
+}
+
+export async function handleProjectSelectionAction(ctx: ScraperBotContext) {
+  console.log("PROJECT_SCENE_DEBUG: handleProjectSelectionAction triggered");
+  const projectId = parseInt((ctx.match as unknown as RegExpExecArray)[1], 10);
+  if (isNaN(projectId)) {
+    logger.warn("[ProjectScene] Invalid project ID from action match");
+    if (ctx.callbackQuery)
+      await ctx.answerCbQuery("Ошибка: неверный ID проекта.");
+    await ctx.scene.reenter();
     return;
   }
-
-  const projectId = parseInt(ctx.match[1]);
-  await ctx.answerCbQuery();
 
   try {
-    await adapter.initialize();
-    const project = await adapter.getProjectById(projectId);
-
+    await ctx.storage.initialize();
+    const project = await ctx.storage.getProjectById(projectId);
     if (project) {
-      await ctx.reply(`Проект "${project.name}". Выберите действие:`, {
-        reply_markup: generateProjectMenuKeyboard(projectId).reply_markup,
-      });
+      ctx.scene.session.currentProjectId = project.id;
+      ctx.scene.session.step = ScraperSceneStep.PROJECT_MENU;
+      await ctx.reply(
+        `Проект "${project.name}". Что вы хотите сделать?`,
+        generateProjectMenuKeyboard(project.id)
+      );
     } else {
       await ctx.reply("Проект не найден. Возможно, он был удален.");
       await ctx.scene.reenter();
     }
-    // await adapter.close();
   } catch (error) {
-    console.error(`Ошибка при получении проекта ${projectId}:`, error);
-    await ctx.reply(
-      "Произошла ошибка при получении данных проекта. Пожалуйста, попробуйте позже."
-    );
+    logger.error("[ProjectScene] Error selecting project:", error);
+    await ctx.reply("Ошибка при выборе проекта.");
+  } finally {
+    await ctx.storage.close();
   }
-});
+  if (ctx.callbackQuery) {
+    await ctx.answerCbQuery();
+  }
+  return;
+}
 
-// Добавить другие обработчики для действий add_competitor, add_hashtag, scrape_project и т.д.
+export async function handleManageHashtagsAction(ctx: ScraperBotContext) {
+  console.log("PROJECT_SCENE_DEBUG: handleManageHashtagsAction triggered");
+  const projectId = parseInt((ctx.match as unknown as RegExpExecArray)[1], 10);
+  if (isNaN(projectId)) {
+    logger.warn(
+      "[ProjectScene] Invalid project ID for hashtags from action match"
+    );
+    if (ctx.callbackQuery)
+      await ctx.answerCbQuery("Ошибка: неверный ID проекта.");
+    await ctx.scene.reenter();
+    return;
+  }
+  ctx.scene.session.currentProjectId = projectId;
+  if (ctx.callbackQuery) {
+    await ctx.answerCbQuery();
+  }
+  await ctx.scene.enter("instagram_scraper_hashtags", { projectId: projectId });
+  return;
+}
 
-export default projectScene;
+// Обработчик для запуска скрапинга
+export async function handleScrapeProjectAction(ctx: ScraperBotContext) {
+  console.log("PROJECT_SCENE_DEBUG: handleScrapeProjectAction triggered");
+  const projectId = parseInt((ctx.match as unknown as RegExpExecArray)[1], 10);
+  if (isNaN(projectId)) {
+    logger.warn("[ProjectScene] Invalid project ID for scraping from action match");
+    if (ctx.callbackQuery)
+      await ctx.answerCbQuery("Ошибка: неверный ID проекта.");
+    await ctx.scene.reenter();
+    return;
+  }
+  ctx.scene.session.currentProjectId = projectId;
+  if (ctx.callbackQuery) {
+    await ctx.answerCbQuery();
+  }
+  await ctx.scene.enter("instagram_scraper_scraping", { projectId: projectId });
+  return;
+}
+
+// Обработчик для просмотра Reels
+export async function handleReelsListAction(ctx: ScraperBotContext) {
+  console.log("PROJECT_SCENE_DEBUG: handleReelsListAction triggered");
+  const projectId = parseInt((ctx.match as unknown as RegExpExecArray)[1], 10);
+  if (isNaN(projectId)) {
+    logger.warn("[ProjectScene] Invalid project ID for reels from action match");
+    if (ctx.callbackQuery)
+      await ctx.answerCbQuery("Ошибка: неверный ID проекта.");
+    await ctx.scene.reenter();
+    return;
+  }
+  ctx.scene.session.currentProjectId = projectId;
+  if (ctx.callbackQuery) {
+    await ctx.answerCbQuery();
+  }
+  await ctx.scene.enter("instagram_scraper_reels", { projectId: projectId });
+  return;
+}
+
+// Регистрация обработчиков кнопок с использованием централизованного обработчика
+registerButtons(projectScene, [
+  {
+    id: "exit_scene",
+    handler: handleExitSceneAction,
+    errorMessage: "Произошла ошибка при выходе из меню проектов. Попробуйте еще раз.",
+    verbose: true
+  },
+  {
+    id: "create_project",
+    handler: handleCreateProjectAction,
+    errorMessage: "Произошла ошибка при создании проекта. Попробуйте еще раз.",
+    verbose: true
+  },
+  {
+    id: "back_to_projects",
+    handler: handleBackToProjectsAction,
+    errorMessage: "Произошла ошибка при возврате к списку проектов. Попробуйте еще раз.",
+    verbose: true
+  },
+  {
+    id: /project_(\d+)/,
+    handler: handleProjectSelectionAction,
+    errorMessage: "Произошла ошибка при выборе проекта. Попробуйте еще раз.",
+    verbose: true
+  },
+  {
+    id: /manage_hashtags_(\d+)/,
+    handler: handleManageHashtagsAction,
+    errorMessage: "Произошла ошибка при переходе к управлению хештегами. Попробуйте еще раз.",
+    verbose: true
+  },
+  {
+    id: /scrape_project_(\d+)/,
+    handler: handleScrapeProjectAction,
+    errorMessage: "Произошла ошибка при запуске скрапинга. Попробуйте еще раз.",
+    verbose: true
+  },
+  {
+    id: /reels_list_(\d+)/,
+    handler: handleReelsListAction,
+    errorMessage: "Произошла ошибка при просмотре Reels. Попробуйте еще раз.",
+    verbose: true
+  }
+]);
+
+// --- Text Handler (Обработчик текстовых сообщений) ---
+export async function handleProjectText(ctx: ScraperBotContext) {
+  console.log("PROJECT_SCENE_DEBUG: handleProjectText triggered");
+  if (!ctx.message || !("text" in ctx.message)) {
+    logger.warn(
+      "[ProjectScene] handleProjectText: Received non-text message or no message"
+    );
+    return;
+  }
+  const text = ctx.message.text;
+  const userSession = ctx.scene.session;
+
+  if (userSession.step === ScraperSceneStep.CREATE_PROJECT) {
+    if (!ctx.from) {
+      logger.error("handleProjectText: ctx.from is undefined");
+      await ctx.reply("Не удалось определить пользователя. Попробуйте /start.");
+      return ctx.scene.leave();
+    }
+    const telegramId = ctx.from.id;
+    const projectName = text.trim();
+
+    if (!isValidProjectName(projectName)) {
+      await ctx.reply(
+        "Название проекта должно быть от 3 до 100 символов. Пожалуйста, введите корректное название:"
+      );
+      return;
+    }
+
+    try {
+      await ctx.storage.initialize();
+      const user = await ctx.storage.getUserByTelegramId(telegramId);
+      if (!user) {
+        logger.error(
+          `[ProjectScene] User not found for telegram_id: ${telegramId} during project creation`
+        );
+        await ctx.reply(
+          "Произошла ошибка: пользователь не найден. Попробуйте /start."
+        );
+        userSession.step = undefined;
+        return ctx.scene.leave();
+      }
+
+      const newProject = await ctx.storage.createProject(user.id, projectName);
+      if (newProject) {
+        logger.info(
+          `[ProjectScene] Project "${projectName}" created for user ${user.id}`
+        );
+        await ctx.reply(`Проект "${newProject.name}" успешно создан!`);
+        userSession.currentProjectId = newProject.id;
+        userSession.step = undefined;
+        await ctx.scene.reenter();
+      } else {
+        logger.error(
+          `[ProjectScene] Failed to create project "${projectName}" for user ${user.id}`
+        );
+        await ctx.reply(
+          "Не удалось создать проект. Попробуйте еще раз или обратитесь в поддержку."
+        );
+      }
+    } catch (error) {
+      logger.error(
+        `[ProjectScene] Error creating project "${projectName}":`,
+        error
+      );
+      await ctx.reply("Произошла серьезная ошибка при создании проекта.");
+      userSession.step = undefined;
+      await ctx.scene.leave();
+    } finally {
+      await ctx.storage.close();
+    }
+  }
+}
+projectScene.on("text", handleProjectText);
