@@ -7,8 +7,11 @@
 
 import { Telegraf, Scenes } from "telegraf";
 import { competitorScene } from "./src/scenes/competitor-scene";
+import { competitorWizardScene, setupCompetitorWizard } from "./src/scenes/competitor-wizard-scene";
 import { projectScene } from "./src/scenes/project-scene";
+import { projectWizardScene, setupProjectWizard } from "./src/scenes/project-wizard-scene";
 import { hashtagScene } from "./src/scenes/hashtag-scene";
+import { hashtagWizardScene, setupHashtagWizard } from "./src/scenes/hashtag-wizard-scene";
 import { scrapingScene } from "./src/scenes/scraping-scene";
 import { reelsScene } from "./src/scenes/reels-scene";
 import { analyticsScene } from "./src/scenes/analytics-scene";
@@ -76,8 +79,11 @@ export function setupInstagramScraperBot(
   // Инициализируем сцены
   const stage = new Scenes.Stage<ScraperBotContext>([
     projectScene,
+    projectWizardScene, // Добавляем новую визард-сцену для проектов
     competitorScene,
+    competitorWizardScene, // Добавляем новую визард-сцену для конкурентов
     hashtagScene,
+    hashtagWizardScene, // Добавляем новую визард-сцену для хештегов
     scrapingScene,
     reelsScene,
     analyticsScene,
@@ -98,12 +104,20 @@ export function setupInstagramScraperBot(
   // Подключаем Stage middleware
   bot.use(stage.middleware() as Middleware<ScraperBotContext>);
 
+  // Настраиваем обработчики для wizard-сцен
+  setupProjectWizard(bot);
+  setupCompetitorWizard(bot);
+  setupHashtagWizard(bot);
+
   // Регистрируем обработчики команд
   bot.command("projects", (ctx) =>
-    ctx.scene.enter("instagram_scraper_projects")
+    ctx.scene.enter("project_wizard")
   );
   bot.command("competitors", (ctx) =>
-    ctx.scene.enter("instagram_scraper_competitors")
+    ctx.scene.enter("competitor_wizard")
+  );
+  bot.command("hashtags", (ctx) =>
+    ctx.scene.enter("hashtag_wizard")
   );
   bot.command("scrape", (ctx) =>
     ctx.scene.enter("instagram_scraper_scraping")
@@ -126,29 +140,15 @@ export function setupInstagramScraperBot(
 
   // Обработчики текстовых сообщений для меню
   bot.hears("📊 Проекты", (ctx) =>
-    ctx.scene.enter("instagram_scraper_projects")
+    ctx.scene.enter("project_wizard")
   );
-  bot.hears("🔍 Конкуренты", async (ctx) => {
+  bot.hears("🔍 Конкуренты", (ctx) => {
     console.log("[DEBUG] Обработчик кнопки '🔍 Конкуренты' вызван");
-    try {
-      // Проверяем наличие ctx.session и инициализируем, если отсутствует
-      if (!ctx.session) {
-        console.log("[DEBUG] Инициализируем ctx.session в обработчике кнопки 'Конкуренты'");
-        ctx.session = {};
-      }
-
-      // Проверяем наличие ctx.scene.session и инициализируем, если отсутствует
-      if (!ctx.scene.session) {
-        console.log("[DEBUG] Инициализируем ctx.scene.session в обработчике кнопки 'Конкуренты'");
-        (ctx.scene as any).session = {};
-      }
-
-      await ctx.scene.enter("instagram_scraper_competitors");
-      console.log("[DEBUG] Успешно вошли в сцену конкурентов");
-    } catch (error) {
-      console.error("[ERROR] Ошибка при входе в сцену конкурентов:", error);
-      await ctx.reply("Произошла ошибка при входе в режим управления конкурентами. Попробуйте еще раз.");
-    }
+    return ctx.scene.enter("competitor_wizard");
+  });
+  bot.hears("#️⃣ Хэштеги", (ctx) => {
+    console.log("[DEBUG] Обработчик кнопки '#️⃣ Хэштеги' вызван");
+    return ctx.scene.enter("hashtag_wizard");
   });
   bot.hears("🎬 Запустить скрапинг", (ctx) =>
     ctx.scene.enter("instagram_scraper_scraping")
@@ -172,8 +172,9 @@ export function setupInstagramScraperBot(
   // Возвращаем API модуля
   return {
     // Методы для входа в сцены
-    enterProjectScene: () => "instagram_scraper_projects",
-    enterCompetitorScene: () => "instagram_scraper_competitors",
+    enterProjectScene: () => "project_wizard",
+    enterCompetitorScene: () => "competitor_wizard",
+    enterHashtagScene: () => "hashtag_wizard",
     enterScrapingScene: () => "instagram_scraper_scraping",
     enterReelsScene: () => "instagram_scraper_reels",
     enterAnalyticsScene: () => "instagram_scraper_analytics",
