@@ -352,6 +352,25 @@ projectWizardScene.action(/reels_list_(\d+)/, async (ctx) => {
   await safeSceneTransition(ctx, "reels_wizard", "reels_list_clicked");
 });
 
+// Обработчик для просмотра аналитики
+projectWizardScene.action(/analytics_list_(\d+)/, async (ctx) => {
+  logger.info(`[ProjectWizard] Обработчик кнопки 'analytics_list' вызван`);
+  const projectId = parseInt(ctx.match[1], 10);
+
+  if (isNaN(projectId)) {
+    logger.warn("[ProjectWizard] Invalid project ID for analytics from action match");
+    await ctx.answerCbQuery("Ошибка: неверный ID проекта.");
+    return ctx.wizard.selectStep(0);
+  }
+
+  ctx.scene.session.currentProjectId = projectId;
+  await ctx.answerCbQuery();
+
+  // Очистка состояния и безопасный переход в другую сцену
+  clearSessionState(ctx, "analytics_list_clicked");
+  await safeSceneTransition(ctx, "analytics_wizard", "analytics_list_clicked");
+});
+
 // Добавляем обработчик для команды /projects
 export function setupProjectWizard(bot: any) {
   bot.command('projects', async (ctx: any) => {

@@ -638,4 +638,15 @@ alwaysApply: true
 6. ✅ Обновлен `index.ts` для регистрации новой wizard-сцены и обработчиков команд.
 7. ✅ Обновлены обработчики в `project-wizard-scene.ts` и `scraping-wizard-scene.ts` для перехода в новую wizard-сцену.
 
-➡️ **Следующий активный шаг:** Реализовать рефакторинг `analyticsScene` в `analyticsWizardScene` с использованием `WizardScene` вместо `BaseScene`.
+✅ **Выполнено:** Реализован рефакторинг `analyticsScene` в `analyticsWizardScene` с использованием `WizardScene` вместо `BaseScene`.
+
+**Что было сделано:**
+1. ✅ Создан новый файл `src/scenes/analytics-wizard-scene.ts` с реализацией `WizardScene` для аналитики Reels.
+2. ✅ Добавлены утилитные функции `clearSessionState` и `safeSceneTransition` для стандартизации очистки состояния и переходов между сценами.
+3. ✅ Реализованы шаги для отображения меню аналитики и анализа популярности контента.
+4. ✅ Перенесены обработчики кнопок на уровень сцены с использованием `scene.action()`.
+5. ✅ Добавлено логирование для всех действий и переходов.
+6. ✅ Обновлен `index.ts` для регистрации новой wizard-сцены и обработчиков команд.
+7. ✅ Обновлены обработчики в `project-wizard-scene.ts` и `reels-wizard-scene.ts` для перехода в новую wizard-сцену.
+
+➡️ **Следующий активный шаг:** Реализовать рефакторинг `notificationScene` в `notificationWizardScene` с использованием `WizardScene` вместо `BaseScene`.

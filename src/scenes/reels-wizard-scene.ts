@@ -489,6 +489,25 @@ reelsWizardScene.action(/reels_list_(\d+)(?:_(.+)_(.+))?/, async (ctx) => {
   return ctx.wizard.selectStep(0);
 });
 
+// Обработчик для перехода к аналитике
+reelsWizardScene.action(/analytics_enter_(\d+)/, async (ctx) => {
+  logger.info(`[ReelsWizard] Обработчик кнопки 'analytics_enter' вызван`);
+  await ctx.answerCbQuery();
+
+  const projectId = parseInt(ctx.match[1], 10);
+
+  if (isNaN(projectId)) {
+    logger.warn("[ReelsWizard] Invalid project ID from action match");
+    await ctx.reply("Ошибка: неверный ID проекта.");
+    return ctx.wizard.selectStep(0);
+  }
+
+  // Очистка состояния и безопасный переход в другую сцену
+  clearSessionState(ctx, "analytics_enter_clicked");
+  ctx.scene.session.currentProjectId = projectId;
+  await safeSceneTransition(ctx, "analytics_wizard", "analytics_enter_clicked");
+});
+
 // Добавляем обработчик для команды /reels
 export function setupReelsWizard(bot: any) {
   bot.command('reels', async (ctx: any) => {
