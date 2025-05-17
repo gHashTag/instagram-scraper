@@ -201,6 +201,10 @@ bash scripts/test-telegram-scenes.sh
 - [Общая документация по тестированию](./src/__tests__/README.md) - структура тестов, инструменты, команды и паттерны
 - [Паттерны тестирования Telegram-сцен](./src/__tests__/TESTING_PATTERNS.md) - подробное описание паттернов тестирования сцен
 - [Фреймворк для тестирования Telegram-сцен](./src/__tests__/helpers/telegram/README.md) - документация по фреймворку для тестирования сцен
+- [Паттерны для Wizard-сцен](./docs/WIZARD_SCENE_PATTERNS.md) - подробное описание паттернов для создания и поддержки Wizard-сцен
+- [Архитектура Wizard-сцен](./docs/WIZARD_SCENE_ARCHITECTURE.md) - описание архитектуры Wizard-сцен после рефакторинга
+- [История успеха с Wizard-сценами](./docs/SUCCESS_HISTORY_WIZARD_SCENES.md) - примеры решения конкретных проблем с Wizard-сценами
+- [Чек-лист для рефакторинга Wizard-сцен](./docs/WIZARD_SCENE_REFACTORING_CHECKLIST.md) - пошаговый чек-лист для рефакторинга существующих Wizard-сцен
 
 #### Пример теста для Telegram-сцены
 
