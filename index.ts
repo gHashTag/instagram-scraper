@@ -19,6 +19,7 @@ import { reelsWizardScene, setupReelsWizard } from "./src/scenes/reels-wizard-sc
 import { analyticsScene } from "./src/scenes/analytics-scene";
 import { analyticsWizardScene, setupAnalyticsWizard } from "./src/scenes/analytics-wizard-scene";
 import { notificationScene } from "./src/scenes/notification-scene";
+import { notificationWizardScene, setupNotificationWizard } from "./src/scenes/notification-wizard-scene";
 import { ReelsCollectionScene } from "./src/scenes/reels-collection-scene";
 import { ChatbotScene } from "./src/scenes/chatbot-scene";
 import type { Middleware } from "telegraf";
@@ -94,6 +95,7 @@ export function setupInstagramScraperBot(
     analyticsScene,
     analyticsWizardScene, // Добавляем новую визард-сцену для аналитики
     notificationScene,
+    notificationWizardScene, // Добавляем новую визард-сцену для уведомлений
     new ReelsCollectionScene(storageAdapter),
     new ChatbotScene(storageAdapter, process.env.OPENAI_API_KEY),
     // Здесь будут добавляться другие сцены
@@ -117,6 +119,7 @@ export function setupInstagramScraperBot(
   setupScrapingWizard(bot);
   setupReelsWizard(bot);
   setupAnalyticsWizard(bot);
+  setupNotificationWizard(bot);
 
   // Регистрируем обработчики команд
   bot.command("projects", (ctx) =>
@@ -138,7 +141,7 @@ export function setupInstagramScraperBot(
     ctx.scene.enter("analytics_wizard")
   );
   bot.command("notifications", (ctx) =>
-    ctx.scene.enter("instagram_scraper_notifications")
+    ctx.scene.enter("notification_wizard")
   );
   bot.command("collections", (ctx) =>
     ctx.scene.enter("reels_collection_scene")
@@ -169,7 +172,7 @@ export function setupInstagramScraperBot(
     ctx.scene.enter("analytics_wizard")
   );
   bot.hears("🔔 Уведомления", (ctx) =>
-    ctx.scene.enter("instagram_scraper_notifications")
+    ctx.scene.enter("notification_wizard")
   );
   bot.hears("📋 Коллекции Reels", (ctx) =>
     ctx.scene.enter("reels_collection_scene")
@@ -187,7 +190,7 @@ export function setupInstagramScraperBot(
     enterScrapingScene: () => "scraping_wizard",
     enterReelsScene: () => "reels_wizard",
     enterAnalyticsScene: () => "analytics_wizard",
-    enterNotificationScene: () => "instagram_scraper_notifications",
+    enterNotificationScene: () => "notification_wizard",
     enterReelsCollectionScene: () => "reels_collection_scene",
     enterChatbotScene: () => "chatbot_scene",
 
