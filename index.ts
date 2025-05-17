@@ -21,6 +21,7 @@ import { analyticsWizardScene, setupAnalyticsWizard } from "./src/scenes/analyti
 import { notificationScene } from "./src/scenes/notification-scene";
 import { notificationWizardScene, setupNotificationWizard } from "./src/scenes/notification-wizard-scene";
 import { ReelsCollectionScene } from "./src/scenes/reels-collection-scene";
+import { ReelsCollectionWizardScene, setupReelsCollectionWizard } from "./src/scenes/reels-collection-wizard-scene";
 import { ChatbotScene } from "./src/scenes/chatbot-scene";
 import type { Middleware } from "telegraf";
 import type {
@@ -97,6 +98,7 @@ export function setupInstagramScraperBot(
     notificationScene,
     notificationWizardScene, // Добавляем новую визард-сцену для уведомлений
     new ReelsCollectionScene(storageAdapter),
+    new ReelsCollectionWizardScene(storageAdapter), // Добавляем новую визард-сцену для коллекций Reels
     new ChatbotScene(storageAdapter, process.env.OPENAI_API_KEY),
     // Здесь будут добавляться другие сцены
   ]);
@@ -120,6 +122,7 @@ export function setupInstagramScraperBot(
   setupReelsWizard(bot);
   setupAnalyticsWizard(bot);
   setupNotificationWizard(bot);
+  setupReelsCollectionWizard(bot);
 
   // Регистрируем обработчики команд
   bot.command("projects", (ctx) =>
@@ -144,7 +147,7 @@ export function setupInstagramScraperBot(
     ctx.scene.enter("notification_wizard")
   );
   bot.command("collections", (ctx) =>
-    ctx.scene.enter("reels_collection_scene")
+    ctx.scene.enter("reels_collection_wizard")
   );
   bot.command("chatbot", (ctx) =>
     ctx.scene.enter("chatbot_scene")
@@ -175,7 +178,7 @@ export function setupInstagramScraperBot(
     ctx.scene.enter("notification_wizard")
   );
   bot.hears("📋 Коллекции Reels", (ctx) =>
-    ctx.scene.enter("reels_collection_scene")
+    ctx.scene.enter("reels_collection_wizard")
   );
   bot.hears("🤖 Чат-бот", (ctx) =>
     ctx.scene.enter("chatbot_scene")
@@ -191,7 +194,7 @@ export function setupInstagramScraperBot(
     enterReelsScene: () => "reels_wizard",
     enterAnalyticsScene: () => "analytics_wizard",
     enterNotificationScene: () => "notification_wizard",
-    enterReelsCollectionScene: () => "reels_collection_scene",
+    enterReelsCollectionScene: () => "reels_collection_wizard",
     enterChatbotScene: () => "chatbot_scene",
 
     // Получение кнопок для меню
