@@ -13,6 +13,7 @@ import { projectWizardScene, setupProjectWizard } from "./src/scenes/project-wiz
 import { hashtagScene } from "./src/scenes/hashtag-scene";
 import { hashtagWizardScene, setupHashtagWizard } from "./src/scenes/hashtag-wizard-scene";
 import { scrapingScene } from "./src/scenes/scraping-scene";
+import { scrapingWizardScene, setupScrapingWizard } from "./src/scenes/scraping-wizard-scene";
 import { reelsScene } from "./src/scenes/reels-scene";
 import { analyticsScene } from "./src/scenes/analytics-scene";
 import { notificationScene } from "./src/scenes/notification-scene";
@@ -85,6 +86,7 @@ export function setupInstagramScraperBot(
     hashtagScene,
     hashtagWizardScene, // Добавляем новую визард-сцену для хештегов
     scrapingScene,
+    scrapingWizardScene, // Добавляем новую визард-сцену для скрапинга
     reelsScene,
     analyticsScene,
     notificationScene,
@@ -108,6 +110,7 @@ export function setupInstagramScraperBot(
   setupProjectWizard(bot);
   setupCompetitorWizard(bot);
   setupHashtagWizard(bot);
+  setupScrapingWizard(bot);
 
   // Регистрируем обработчики команд
   bot.command("projects", (ctx) =>
@@ -120,7 +123,7 @@ export function setupInstagramScraperBot(
     ctx.scene.enter("hashtag_wizard")
   );
   bot.command("scrape", (ctx) =>
-    ctx.scene.enter("instagram_scraper_scraping")
+    ctx.scene.enter("scraping_wizard")
   );
   bot.command("reels", (ctx) =>
     ctx.scene.enter("instagram_scraper_reels")
@@ -151,7 +154,7 @@ export function setupInstagramScraperBot(
     return ctx.scene.enter("hashtag_wizard");
   });
   bot.hears("🎬 Запустить скрапинг", (ctx) =>
-    ctx.scene.enter("instagram_scraper_scraping")
+    ctx.scene.enter("scraping_wizard")
   );
   bot.hears("👀 Просмотр Reels", (ctx) =>
     ctx.scene.enter("instagram_scraper_reels")
@@ -175,7 +178,7 @@ export function setupInstagramScraperBot(
     enterProjectScene: () => "project_wizard",
     enterCompetitorScene: () => "competitor_wizard",
     enterHashtagScene: () => "hashtag_wizard",
-    enterScrapingScene: () => "instagram_scraper_scraping",
+    enterScrapingScene: () => "scraping_wizard",
     enterReelsScene: () => "instagram_scraper_reels",
     enterAnalyticsScene: () => "instagram_scraper_analytics",
     enterNotificationScene: () => "instagram_scraper_notifications",
