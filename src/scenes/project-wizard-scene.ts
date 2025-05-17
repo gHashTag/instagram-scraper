@@ -349,7 +349,7 @@ projectWizardScene.action(/reels_list_(\d+)/, async (ctx) => {
 
   // Очистка состояния и безопасный переход в другую сцену
   clearSessionState(ctx, "reels_list_clicked");
-  await safeSceneTransition(ctx, "instagram_scraper_reels", "reels_list_clicked");
+  await safeSceneTransition(ctx, "reels_wizard", "reels_list_clicked");
 });
 
 // Добавляем обработчик для команды /projects

@@ -337,6 +337,42 @@ scrapingWizardScene.action("scrape_hashtags", async (ctx) => {
   return ctx.wizard.selectStep(2);
 });
 
+// Обработчик для просмотра результатов скрапинга
+scrapingWizardScene.action(/show_reels_(.+)_(.+)_(.+)/, async (ctx) => {
+  logger.info(`[ScrapingWizard] Обработчик кнопки 'show_reels' вызван`);
+  await ctx.answerCbQuery();
+
+  const projectId = ctx.wizard.state.projectId;
+  const sourceType = ctx.match[1] as "competitor" | "hashtag";
+  const sourceId = ctx.match[2];
+
+  // Очистка состояния и безопасный переход в другую сцену
+  clearSessionState(ctx, "show_reels_clicked");
+  ctx.scene.session.currentProjectId = projectId;
+  ctx.scene.session.currentSourceType = sourceType;
+  ctx.scene.session.currentSourceId = sourceId;
+  await safeSceneTransition(ctx, "reels_wizard", "show_reels_clicked");
+});
+
+// Обработчик для просмотра результатов скрапинга проекта
+scrapingWizardScene.action(/show_reels_project_(\d+)/, async (ctx) => {
+  logger.info(`[ScrapingWizard] Обработчик кнопки 'show_reels_project' вызван`);
+  await ctx.answerCbQuery();
+
+  const projectId = parseInt(ctx.match[1], 10);
+
+  if (isNaN(projectId)) {
+    logger.warn("[ScrapingWizard] Invalid project ID from action match");
+    await ctx.reply("Ошибка: неверный ID проекта.");
+    return ctx.wizard.selectStep(0);
+  }
+
+  // Очистка состояния и безопасный переход в другую сцену
+  clearSessionState(ctx, "show_reels_project_clicked");
+  ctx.scene.session.currentProjectId = projectId;
+  await safeSceneTransition(ctx, "reels_wizard", "show_reels_project_clicked");
+});
+
 // Добавляем обработчик для команды /scraping
 export function setupScrapingWizard(bot: any) {
   bot.command('scraping', async (ctx: any) => {

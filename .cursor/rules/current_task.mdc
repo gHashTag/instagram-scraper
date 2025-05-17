@@ -627,4 +627,15 @@ alwaysApply: true
 6. ✅ Обновлен `index.ts` для регистрации новой wizard-сцены и обработчиков команд.
 7. ✅ Обновлен обработчик `handleScrapeProjectAction` в `project-wizard-scene.ts` для перехода в новую wizard-сцену.
 
-➡️ **Следующий активный шаг:** Реализовать рефакторинг `reelsScene` в `reelsWizardScene` с использованием `WizardScene` вместо `BaseScene`.
+✅ **Выполнено:** Реализован рефакторинг `reelsScene` в `reelsWizardScene` с использованием `WizardScene` вместо `BaseScene`.
+
+**Что было сделано:**
+1. ✅ Создан новый файл `src/scenes/reels-wizard-scene.ts` с реализацией `WizardScene` для просмотра Reels.
+2. ✅ Добавлены утилитные функции `clearSessionState` и `safeSceneTransition` для стандартизации очистки состояния и переходов между сценами.
+3. ✅ Реализованы шаги для отображения списка Reels и детальной информации о Reel.
+4. ✅ Перенесены обработчики кнопок на уровень сцены с использованием `scene.action()`.
+5. ✅ Добавлено логирование для всех действий и переходов.
+6. ✅ Обновлен `index.ts` для регистрации новой wizard-сцены и обработчиков команд.
+7. ✅ Обновлены обработчики в `project-wizard-scene.ts` и `scraping-wizard-scene.ts` для перехода в новую wizard-сцену.
+
+➡️ **Следующий активный шаг:** Реализовать рефакторинг `analyticsScene` в `analyticsWizardScene` с использованием `WizardScene` вместо `BaseScene`.
