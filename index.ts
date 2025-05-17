@@ -23,6 +23,7 @@ import { notificationWizardScene, setupNotificationWizard } from "./src/scenes/n
 import { ReelsCollectionScene } from "./src/scenes/reels-collection-scene";
 import { ReelsCollectionWizardScene, setupReelsCollectionWizard } from "./src/scenes/reels-collection-wizard-scene";
 import { ChatbotScene } from "./src/scenes/chatbot-scene";
+import { ChatbotWizardScene, setupChatbotWizard } from "./src/scenes/chatbot-wizard-scene";
 import type { Middleware } from "telegraf";
 import type {
   StorageAdapter,
@@ -100,6 +101,7 @@ export function setupInstagramScraperBot(
     new ReelsCollectionScene(storageAdapter),
     new ReelsCollectionWizardScene(storageAdapter), // Добавляем новую визард-сцену для коллекций Reels
     new ChatbotScene(storageAdapter, process.env.OPENAI_API_KEY),
+    new ChatbotWizardScene(storageAdapter, process.env.OPENAI_API_KEY), // Добавляем новую визард-сцену для чат-бота
     // Здесь будут добавляться другие сцены
   ]);
 
@@ -123,6 +125,7 @@ export function setupInstagramScraperBot(
   setupAnalyticsWizard(bot);
   setupNotificationWizard(bot);
   setupReelsCollectionWizard(bot);
+  setupChatbotWizard(bot);
 
   // Регистрируем обработчики команд
   bot.command("projects", (ctx) =>
@@ -150,7 +153,7 @@ export function setupInstagramScraperBot(
     ctx.scene.enter("reels_collection_wizard")
   );
   bot.command("chatbot", (ctx) =>
-    ctx.scene.enter("chatbot_scene")
+    ctx.scene.enter("chatbot_wizard")
   );
 
   // Обработчики текстовых сообщений для меню
@@ -181,7 +184,7 @@ export function setupInstagramScraperBot(
     ctx.scene.enter("reels_collection_wizard")
   );
   bot.hears("🤖 Чат-бот", (ctx) =>
-    ctx.scene.enter("chatbot_scene")
+    ctx.scene.enter("chatbot_wizard")
   );
 
   // Возвращаем API модуля
@@ -195,7 +198,7 @@ export function setupInstagramScraperBot(
     enterAnalyticsScene: () => "analytics_wizard",
     enterNotificationScene: () => "notification_wizard",
     enterReelsCollectionScene: () => "reels_collection_wizard",
-    enterChatbotScene: () => "chatbot_scene",
+    enterChatbotScene: () => "chatbot_wizard",
 
     // Получение кнопок для меню
     getMenuButtons: () => [
