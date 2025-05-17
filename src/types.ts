@@ -36,6 +36,8 @@ export interface ScraperBotContext extends TelegrafContext {
   };
   // Возвращаем тип к SceneContextScene, который включает и контекст, и сессию
   scene: Scenes.SceneContextScene<ScraperBotContext, ScraperSceneSessionData>;
+  // Добавляем wizard для поддержки визард-сцен
+  wizard?: Scenes.WizardContextWizard<ScraperBotContext>;
   match?: RegExpExecArray | null;
 }
 
@@ -50,6 +52,7 @@ export interface StorageAdapter {
     firstName?: string,
     lastName?: string
   ): Promise<User>;
+  saveUser(userData: { telegramId: number; username?: string; firstName?: string; lastName?: string }): Promise<User>;
   findUserByTelegramIdOrCreate(
     telegramId: number,
     username?: string,
@@ -178,7 +181,11 @@ export enum ScraperSceneStep {
   TRANSCRIBE_REEL = "TRANSCRIBE_REEL", // Добавлен для сцены расшифровки Reel
   EDIT_TRANSCRIPT = "EDIT_TRANSCRIPT", // Добавлен для сцены редактирования расшифровки
   CHATBOT = "CHATBOT", // Добавлен для сцены чат-бота
-  CHATBOT_REEL_LIST = "CHATBOT_REEL_LIST" // Добавлен для сцены выбора Reel для чат-бота
+  CHATBOT_REEL_LIST = "CHATBOT_REEL_LIST", // Добавлен для сцены выбора Reel для чат-бота
+  CHATBOT_CHAT = "CHATBOT_CHAT", // Добавлен для сцены чата с Reel
+  // Шаги для шаблона Wizard-сцены
+  TEMPLATE_STEP_1 = "TEMPLATE_STEP_1", // Шаг 1 шаблона
+  TEMPLATE_STEP_2 = "TEMPLATE_STEP_2" // Шаг 2 шаблона
 }
 
 // Тип ScraperSceneSessionData теперь импортируется из ./schemas

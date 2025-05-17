@@ -538,6 +538,211 @@ await sendMenu(ctx);
   - `2311bd9` - Рефакторинг `notificationScene` в `notificationWizardScene`
   - `71afed5` - Рефакторинг `ReelsCollectionScene` в `ReelsCollectionWizardScene`
   - `63c656d` - Рефакторинг `ChatbotScene` в `ChatbotWizardScene`
+  - `df77fac` - Обновление документации проекта
+
+## Универсальный паттерн для создания Wizard-сцен (Ноябрь 2024)
+
+- **Описание:** Разработан и внедрен универсальный паттерн для создания Wizard-сцен в Telegram боте. Этот паттерн обеспечивает единообразие кода, улучшает управление состоянием и повышает надежность бота.
+- **Структура паттерна:**
+
+```typescript
+// 1. Импорты
+import { Scenes, Markup } from "telegraf";
+import type { ScraperBotContext } from "../types";
+import { logger } from "../logger";
+
+// 2. Утилитные функции
+/**
+ * Очищает состояние сессии перед выходом из сцены
+ */
+function clearSessionState(ctx: ScraperBotContext, reason: string = "general"): void {
+  if (ctx.scene.session) {
+    logger.info(`[SceneName] Clearing session state before leaving (reason: ${reason})`);
+    // Очистка всех необходимых полей состояния
+    ctx.scene.session.step = undefined;
+    // Специфичные для сцены поля
+    ctx.scene.session.specificField = undefined;
+    // Очистка wizard.state
+    if (ctx.wizard && ctx.wizard.state) {
+      ctx.wizard.state = {};
+    }
+  }
+}
+
+/**
+ * Выполняет безопасный переход в другую сцену с обработкой ошибок
+ */
+async function safeSceneTransition(
+  ctx: ScraperBotContext,
+  targetScene: string = "default_scene",
+  reason: string = "general"
+): Promise<void> {
+  try {
+    logger.info(`[SceneName] Transitioning to ${targetScene} scene (reason: ${reason})`);
+    await ctx.scene.enter(targetScene);
+  } catch (error) {
+    logger.error(`[SceneName] Error entering ${targetScene} scene:`, error);
+    await ctx.scene.leave();
+  }
+}
+
+// 3. Класс Wizard-сцены
+export class MyWizardScene extends Scenes.WizardScene<ScraperBotContext> {
+  constructor(storage: StorageAdapter) {
+    super(
+      "my_wizard_scene_id", // ID сцены
+
+      // Шаг 1: Начальный шаг
+      async (ctx) => {
+        logger.info(`[MyWizard] Шаг 1: Описание шага`);
+        logger.debug(`[MyWizard] Содержимое ctx.wizard.state:`, ctx.wizard.state);
+
+        // Проверка наличия пользователя
+        if (!ctx.from) {
+          logger.error("[MyWizard] ctx.from is undefined");
+          await ctx.reply("Не удалось определить пользователя. Попробуйте перезапустить бота.");
+          clearSessionState(ctx, "missing_user");
+          return ctx.scene.leave();
+        }
+
+        // Получение данных из состояния или параметров
+        const itemId = ctx.wizard.state.itemId || ctx.scene.session.currentItemId;
+
+        if (!itemId) {
+          // Обработка отсутствия необходимых данных
+          await ctx.reply("Не удалось определить элемент. Пожалуйста, выберите из списка.");
+          clearSessionState(ctx, "missing_item_id");
+          await safeSceneTransition(ctx, "fallback_scene", "missing_item_id");
+          return;
+        }
+
+        try {
+          // Бизнес-логика шага
+          // ...
+
+          // Отправка сообщения пользователю
+          await ctx.reply("Сообщение для пользователя", {
+            parse_mode: "Markdown",
+            ...Markup.inlineKeyboard([
+              [Markup.button.callback("Кнопка 1", "button_1")],
+              [Markup.button.callback("Кнопка 2", "button_2")],
+              [Markup.button.callback("Назад", "back_button")]
+            ])
+          });
+        } catch (error) {
+          // Обработка ошибок
+          logger.error("[MyWizard] Error in step 1:", error);
+          await ctx.reply("Произошла ошибка. Пожалуйста, попробуйте позже.");
+          clearSessionState(ctx, "error_in_step_1");
+          await safeSceneTransition(ctx, "fallback_scene", "error_in_step_1");
+        }
+
+        // Остаемся на текущем шаге или переходим к следующему
+        return; // или return ctx.wizard.next();
+      },
+
+      // Шаг 2: Следующий шаг
+      async (ctx) => {
+        logger.info(`[MyWizard] Шаг 2: Описание шага`);
+        logger.debug(`[MyWizard] Содержимое ctx.wizard.state:`, ctx.wizard.state);
+
+        // Логика шага 2
+        // ...
+
+        return;
+      }
+    );
+
+    // 4. Регистрация обработчиков кнопок
+    this.registerButtonHandlers();
+  }
+
+  /**
+   * Регистрирует обработчики кнопок
+   */
+  private registerButtonHandlers(): void {
+    // Обработчик для кнопки 1
+    this.action("button_1", async (ctx) => {
+      logger.info(`[MyWizard] Обработчик кнопки 'button_1' вызван`);
+      await ctx.answerCbQuery();
+
+      // Логика обработчика
+      // ...
+
+      // Переход к определенному шагу
+      return ctx.wizard.selectStep(1);
+    });
+
+    // Обработчик для кнопки 2
+    this.action("button_2", async (ctx) => {
+      logger.info(`[MyWizard] Обработчик кнопки 'button_2' вызван`);
+      await ctx.answerCbQuery();
+
+      // Логика обработчика
+      // ...
+
+      // Переход к определенному шагу
+      return ctx.wizard.selectStep(2);
+    });
+
+    // Обработчик для кнопки "Назад"
+    this.action("back_button", async (ctx) => {
+      logger.info(`[MyWizard] Обработчик кнопки 'back_button' вызван`);
+      await ctx.answerCbQuery();
+
+      // Очистка состояния и безопасный переход в другую сцену
+      clearSessionState(ctx, "back_button_clicked");
+      await safeSceneTransition(ctx, "previous_scene", "back_button_clicked");
+    });
+  }
+}
+
+// 5. Функция для настройки обработчиков команд
+export function setupMyWizard(bot: any) {
+  bot.command('my_command', async (ctx: any) => {
+    logger.info("[MyWizard] Command /my_command triggered");
+    await ctx.scene.enter('my_wizard_scene_id');
+  });
+
+  bot.hears('Текст кнопки', async (ctx: any) => {
+    logger.info("[MyWizard] Button 'Текст кнопки' clicked");
+    await ctx.scene.enter('my_wizard_scene_id');
+  });
+}
+```
+
+- **Ключевые элементы паттерна:**
+  1. **Утилитные функции:**
+     - `clearSessionState` - очистка состояния сессии
+     - `safeSceneTransition` - безопасный переход между сценами
+  2. **Структура класса:**
+     - Конструктор с определением шагов
+     - Метод `registerButtonHandlers` для регистрации обработчиков кнопок
+  3. **Шаги сцены:**
+     - Логирование начала шага
+     - Проверка наличия необходимых данных
+     - Обработка ошибок с помощью try-catch
+     - Возврат к текущему шагу или переход к следующему
+  4. **Обработчики кнопок:**
+     - Логирование вызова обработчика
+     - Ответ на callback query
+     - Переход к определенному шагу или другой сцене
+  5. **Функция настройки:**
+     - Регистрация обработчиков команд и текстовых сообщений
+
+- **Преимущества паттерна:**
+  - **Единообразие:** Все сцены имеют одинаковую структуру
+  - **Изоляция:** Каждая сцена содержит все необходимые компоненты
+  - **Надежность:** Обработка ошибок и безопасные переходы
+  - **Отладка:** Подробное логирование всех действий
+  - **Расширяемость:** Легко добавлять новые шаги и обработчики
+
+- **Рекомендации по использованию:**
+  1. Используйте этот паттерн для всех новых Wizard-сцен
+  2. При рефакторинге существующих сцен следуйте этому паттерну
+  3. Адаптируйте паттерн под конкретные нужды, сохраняя основную структуру
+  4. Документируйте все отклонения от паттерна
+  5. Регулярно обновляйте паттерн на основе опыта использования
 
       // Явно указываем, что нужно перейти в сцену проектов
       try {
