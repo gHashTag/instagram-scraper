@@ -254,18 +254,29 @@ projectWizardScene.action("exit_scene", async (ctx) => {
 });
 
 projectWizardScene.action("create_project", async (ctx) => {
+  console.log(`[DEBUG] Обработчик кнопки 'create_project' вызван`);
   logger.info(`[ProjectWizard] Обработчик кнопки 'create_project' вызван`);
-  await ctx.answerCbQuery();
 
-  await ctx.reply(
-    "Введите название нового проекта (например, 'Клиника Аврора МСК'):",
-    Markup.inlineKeyboard([
-      Markup.button.callback("Отмена", "back_to_projects"),
-    ])
-  );
+  try {
+    await ctx.answerCbQuery();
+    console.log(`[DEBUG] ctx.answerCbQuery() выполнен успешно`);
 
-  // Переходим к шагу создания проекта
-  return ctx.wizard.next();
+    await ctx.reply(
+      "Введите название нового проекта (например, 'Клиника Аврора МСК'):",
+      Markup.inlineKeyboard([
+        Markup.button.callback("Отмена", "back_to_projects"),
+      ])
+    );
+    console.log(`[DEBUG] ctx.reply() выполнен успешно`);
+
+    // Переходим к шагу создания проекта
+    console.log(`[DEBUG] Переход к следующему шагу (ctx.wizard.next())`);
+    return ctx.wizard.next();
+  } catch (error) {
+    console.error(`[ERROR] Ошибка в обработчике кнопки 'create_project':`, error);
+    await ctx.reply("Произошла ошибка при создании проекта. Пожалуйста, попробуйте позже.");
+    return ctx.wizard.selectStep(0);
+  }
 });
 
 projectWizardScene.action("back_to_projects", async (ctx) => {

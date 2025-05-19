@@ -8,6 +8,7 @@ import type { Project } from "@/types"; // Раскомментировано и
  */
 export function generateProjectsKeyboard(projects: Project[]) {
   if (!projects || projects.length === 0) {
+    console.log("[DEBUG] Нет проектов, добавляем кнопку 'Создать проект' с callback_data='create_project'");
     return Markup.inlineKeyboard([
       [Markup.button.callback("Создать проект", "create_project")],
       [Markup.button.callback("Выйти", "exit_scene")],
@@ -24,6 +25,7 @@ export function generateProjectsKeyboard(projects: Project[]) {
   projectButtons.push([
     Markup.button.callback("Создать новый проект", "create_project"),
   ]);
+  console.log("[DEBUG] Добавлена кнопка 'Создать новый проект' с callback_data='create_project'");
   projectButtons.push([Markup.button.callback("Выйти", "exit_scene")]);
 
   return Markup.inlineKeyboard(projectButtons);
