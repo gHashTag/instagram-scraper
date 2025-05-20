@@ -649,59 +649,7 @@ export class SqliteAdapter implements StorageAdapter {
     }
   }
 
-  // Заглушки для методов уведомлений
 
-  /**
-   * Получение настроек уведомлений пользователя
-   * @param userId ID пользователя
-   * @returns Настройки уведомлений или null, если не найдены
-   */
-  async getNotificationSettings(userId: number): Promise<any | null> {
-    console.warn(`[SqliteAdapter] getNotificationSettings не реализован для SQLite. userId: ${userId}`);
-    return null;
-  }
-
-  /**
-   * Сохранение настроек уведомлений пользователя
-   * @param settings Настройки уведомлений
-   * @returns Сохраненные настройки уведомлений
-   */
-  async saveNotificationSettings(settings: any): Promise<any> {
-    console.warn(`[SqliteAdapter] saveNotificationSettings не реализован для SQLite. settings: ${JSON.stringify(settings)}`);
-    return settings;
-  }
-
-  /**
-   * Обновление настроек уведомлений пользователя
-   * @param userId ID пользователя
-   * @param settings Настройки уведомлений для обновления
-   * @returns Обновленные настройки уведомлений
-   */
-  async updateNotificationSettings(userId: number, settings: any): Promise<any> {
-    console.warn(`[SqliteAdapter] updateNotificationSettings не реализован для SQLite. userId: ${userId}, settings: ${JSON.stringify(settings)}`);
-    return settings;
-  }
-
-  /**
-   * Получение пользователя по ID
-   * @param userId ID пользователя
-   * @returns Пользователь или null, если не найден
-   */
-  async getUserById(userId: number): Promise<User | null> {
-    console.warn(`[SqliteAdapter] getUserById не реализован для SQLite. userId: ${userId}`);
-    return null;
-  }
-
-  /**
-   * Получение новых Reels для проекта
-   * @param projectId ID проекта
-   * @param afterDate Дата, после которой считать Reels новыми
-   * @returns Массив новых Reels
-   */
-  async getNewReels(projectId: number, afterDate: string): Promise<ReelContent[]> {
-    console.warn(`[SqliteAdapter] getNewReels не реализован для SQLite. projectId: ${projectId}, afterDate: ${afterDate}`);
-    return [];
-  }
 
   // Методы для работы с коллекциями Reels
 
@@ -1380,6 +1328,56 @@ export class SqliteAdapter implements StorageAdapter {
     }
   }
 
+  /**
+   * Сохраняет пользователя в базе данных
+   * @param userData Данные пользователя
+   * @returns Сохраненный пользователь
+   */
+  async saveUser(userData: { telegramId: number; username?: string; firstName?: string; lastName?: string }): Promise<User> {
+    console.log(`[DEBUG] SqliteAdapter.saveUser: Сохранение пользователя с telegramId=${userData.telegramId}`);
+    try {
+      // Проверяем, существует ли пользователь
+      const existingUser = await this.getUserByTelegramId(userData.telegramId);
+
+      if (existingUser) {
+        console.log(`[DEBUG] SqliteAdapter.saveUser: Пользователь с telegramId=${userData.telegramId} уже существует, обновляем данные`);
+        // Если пользователь существует, обновляем его данные
+        const db = this.ensureConnection();
+        const query = db.prepare(
+          "UPDATE Users SET username = ?, first_name = ?, last_name = ? WHERE telegram_id = ?"
+        );
+        query.run(
+          userData.username || null,
+          userData.firstName || null,
+          userData.lastName || null,
+          userData.telegramId
+        );
+
+        // Получаем обновленного пользователя
+        const updatedUser = await this.getUserByTelegramId(userData.telegramId);
+        if (!updatedUser) {
+          throw new Error("Не удалось получить обновленного пользователя");
+        }
+
+        return updatedUser;
+      } else {
+        console.log(`[DEBUG] SqliteAdapter.saveUser: Пользователь с telegramId=${userData.telegramId} не найден, создаем нового`);
+        // Если пользователь не существует, создаем нового
+        return this.createUser(
+          userData.telegramId,
+          userData.username,
+          userData.firstName,
+          userData.lastName
+        );
+      }
+    } catch (error) {
+      console.error("[ERROR] Ошибка при сохранении пользователя в SQLite:", error);
+      throw new Error(
+        `Ошибка при сохранении пользователя: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
   async findUserByTelegramIdOrCreate(
     telegramId: number,
     username?: string,
@@ -1404,5 +1402,97 @@ export class SqliteAdapter implements StorageAdapter {
       );
     }
   }
+
+  /**
+   * Выполняет произвольный SQL-запрос
+   * @param query SQL-запрос
+   * @param params Параметры запроса
+   * @returns Результат запроса
+   */
+  async executeQuery(query: string, params?: any[]): Promise<any> {
+    const db = this.ensureConnection();
+    try {
+      if (!params || params.length === 0) {
+        // Если параметры не указаны, выполняем запрос без параметров
+        if (query.trim().toLowerCase().startsWith("select")) {
+          // Для SELECT-запросов используем all()
+          return db.prepare(query).all();
+        } else {
+          // Для других запросов используем run()
+          return db.prepare(query).run();
+        }
+      } else {
+        // Если параметры указаны, выполняем запрос с параметрами
+        if (query.trim().toLowerCase().startsWith("select")) {
+          // Для SELECT-запросов используем all()
+          return db.prepare(query).all(...params);
+        } else {
+          // Для других запросов используем run()
+          return db.prepare(query).run(...params);
+        }
+      }
+    } catch (error) {
+      console.error("Ошибка при выполнении SQL-запроса в SQLite:", error);
+      throw new Error(
+        `Ошибка при выполнении SQL-запроса: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
+  // Заглушки для методов уведомлений
+
+  /**
+   * Получение настроек уведомлений пользователя
+   * @param userId ID пользователя
+   * @returns Настройки уведомлений или null, если не найдены
+   */
+  async getNotificationSettings(userId: number): Promise<any | null> {
+    console.warn(`[SqliteAdapter] getNotificationSettings не реализован для SQLite. userId: ${userId}`);
+    return null;
+  }
+
+  /**
+   * Сохранение настроек уведомлений пользователя
+   * @param settings Настройки уведомлений
+   * @returns Сохраненные настройки уведомлений
+   */
+  async saveNotificationSettings(settings: any): Promise<any> {
+    console.warn(`[SqliteAdapter] saveNotificationSettings не реализован для SQLite. settings: ${JSON.stringify(settings)}`);
+    return settings;
+  }
+
+  /**
+   * Обновление настроек уведомлений пользователя
+   * @param userId ID пользователя
+   * @param settings Настройки уведомлений для обновления
+   * @returns Обновленные настройки уведомлений
+   */
+  async updateNotificationSettings(userId: number, settings: any): Promise<any> {
+    console.warn(`[SqliteAdapter] updateNotificationSettings не реализован для SQLite. userId: ${userId}, settings: ${JSON.stringify(settings)}`);
+    return settings;
+  }
+
+  /**
+   * Получение пользователя по ID
+   * @param userId ID пользователя
+   * @returns Пользователь или null, если не найден
+   */
+  async getUserById(userId: number): Promise<User | null> {
+    console.warn(`[SqliteAdapter] getUserById не реализован для SQLite. userId: ${userId}`);
+    return null;
+  }
+
+  /**
+   * Получение новых Reels для проекта
+   * @param projectId ID проекта
+   * @param afterDate Дата, после которой считать Reels новыми
+   * @returns Массив новых Reels
+   */
+  async getNewReels(projectId: number, afterDate: string): Promise<ReelContent[]> {
+    console.warn(`[SqliteAdapter] getNewReels не реализован для SQLite. projectId: ${projectId}, afterDate: ${afterDate}`);
+    return [];
+  }
+
+
 
 }

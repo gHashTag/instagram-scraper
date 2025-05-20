@@ -99,10 +99,41 @@ export function validateParsingRunLog(data: unknown) {
  * @returns Валидированный массив данных или пустой массив в случае ошибки
  */
 export function validateArray<T>(schema: z.ZodType<T>, data: unknown): T[] {
+  console.log(`[DEBUG] validateArray: Начало валидации массива данных, тип схемы: ${schema.constructor.name}`);
+
+  if (!Array.isArray(data)) {
+    console.error(`[ERROR] validateArray: Данные не являются массивом:`, data);
+    return [];
+  }
+
+  console.log(`[DEBUG] validateArray: Размер массива: ${data.length}`);
+
   try {
-    return z.array(schema).parse(data);
+    const result = z.array(schema).parse(data);
+    console.log(`[DEBUG] validateArray: Успешная валидация, результат содержит ${result.length} элементов`);
+    return result;
   } catch (error) {
     console.error("Ошибка валидации массива:", error);
+
+    // Попробуем валидировать каждый элемент отдельно, чтобы найти проблемный
+    if (Array.isArray(data)) {
+      console.log(`[DEBUG] validateArray: Попытка валидации каждого элемента отдельно...`);
+      const validItems: T[] = [];
+
+      data.forEach((item, index) => {
+        try {
+          const validItem = schema.parse(item);
+          validItems.push(validItem);
+        } catch (itemError) {
+          console.error(`[ERROR] validateArray: Ошибка валидации элемента ${index}:`, itemError);
+          console.log(`[DEBUG] validateArray: Проблемный элемент:`, item);
+        }
+      });
+
+      console.log(`[DEBUG] validateArray: Успешно валидировано ${validItems.length} из ${data.length} элементов`);
+      return validItems;
+    }
+
     return [];
   }
 }
@@ -131,7 +162,15 @@ export function validateProjects(data: unknown) {
  * @returns Валидированный массив конкурентов или пустой массив в случае ошибки
  */
 export function validateCompetitors(data: unknown) {
-  return validateArray(CompetitorSchema, data);
+  console.log(`[DEBUG] validateCompetitors: Начало валидации данных:`, data);
+  try {
+    const result = validateArray(CompetitorSchema, data);
+    console.log(`[DEBUG] validateCompetitors: Результат валидации:`, result);
+    return result;
+  } catch (error) {
+    console.error(`[ERROR] validateCompetitors: Ошибка валидации:`, error);
+    return [];
+  }
 }
 
 /**
