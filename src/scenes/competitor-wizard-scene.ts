@@ -447,10 +447,22 @@ competitorWizardScene.action("back_to_list", async (ctx: any) => {
   // Очищаем список конкурентов в состоянии, чтобы он был обновлен при переходе на шаг 2
   if (ctx.wizard && ctx.wizard.state) {
     delete ctx.wizard.state.competitors;
+    console.log(`[DEBUG] Очищен список конкурентов в состоянии`);
   }
 
   // Возвращаемся к списку конкурентов
-  return ctx.wizard.selectStep(1);
+  console.log(`[DEBUG] Переход к шагу 1 (список конкурентов)`);
+
+  try {
+    // Вызываем шаг 2 напрямую
+    console.log(`[DEBUG] Вызов шага 2 напрямую`);
+    await ctx.wizard.selectStep(1);
+    return ctx.wizard.steps[1](ctx);
+  } catch (error) {
+    console.error(`[ERROR] Ошибка при возврате к списку конкурентов:`, error);
+    await ctx.reply("Произошла ошибка при возврате к списку конкурентов. Попробуйте еще раз.");
+    return ctx.wizard.selectStep(1);
+  }
 });
 
 // Добавляем обработчик для команды /competitors
