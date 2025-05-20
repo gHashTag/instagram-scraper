@@ -13,6 +13,42 @@ import {
 import { registerButtons } from "../utils/button-handler";
 
 /**
+ * Очищает состояние сессии перед выходом из сцены
+ * @param ctx Контекст Telegraf
+ * @param reason Причина очистки состояния (для логирования)
+ */
+function clearSessionState(ctx: ScraperBotContext, reason: string = "general"): void {
+  if (ctx.scene.session) {
+    logger.info(`[ReelsScene] Clearing session state before leaving (reason: ${reason})`);
+    ctx.scene.session.reelsFilter = undefined;
+    ctx.scene.session.reelsPage = 1;
+    ctx.scene.session.currentReelId = undefined;
+    ctx.scene.session.currentSourceType = undefined;
+    ctx.scene.session.currentSourceId = undefined;
+  }
+}
+
+/**
+ * Выполняет безопасный переход в другую сцену с обработкой ошибок
+ * @param ctx Контекст Telegraf
+ * @param targetScene Целевая сцена
+ * @param reason Причина перехода (для логирования)
+ */
+async function safeSceneTransition(
+  ctx: ScraperBotContext,
+  targetScene: string = "instagram_scraper_projects",
+  reason: string = "general"
+): Promise<void> {
+  try {
+    logger.info(`[ReelsScene] Transitioning to ${targetScene} scene (reason: ${reason})`);
+    await ctx.scene.enter(targetScene);
+  } catch (error) {
+    logger.error(`[ReelsScene] Error entering ${targetScene} scene:`, error);
+    await ctx.scene.leave();
+  }
+}
+
+/**
  * Сцена для просмотра Reels
  */
 export const reelsScene = new Scenes.BaseScene<ScraperBotContext>(
@@ -28,7 +64,10 @@ export async function handleReelsEnter(ctx: ScraperBotContext): Promise<void> {
     await ctx.reply(
       "Не удалось определить пользователя. Попробуйте перезапустить бота командой /start."
     );
-    ctx.scene.leave();
+
+    // Очистка состояния и безопасный переход в другую сцену
+    clearSessionState(ctx, "missing_user");
+    await safeSceneTransition(ctx, "instagram_scraper_projects", "missing_user");
     return;
   }
 
@@ -171,7 +210,10 @@ export async function handleReelsEnter(ctx: ScraperBotContext): Promise<void> {
     await ctx.reply(
       "Произошла ошибка при загрузке данных. Попробуйте еще раз."
     );
-    await ctx.scene.leave();
+
+    // Очистка состояния и безопасный переход в другую сцену
+    clearSessionState(ctx, "data_loading_error");
+    await safeSceneTransition(ctx, "instagram_scraper_projects", "data_loading_error");
   } finally {
     await ctx.storage.close();
   }

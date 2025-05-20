@@ -173,10 +173,12 @@ export async function handleManageHashtagsAction(ctx: ScraperBotContext) {
     return;
   }
   ctx.scene.session.currentProjectId = projectId;
+  ctx.scene.session.projectId = projectId;
   if (ctx.callbackQuery) {
     await ctx.answerCbQuery();
   }
-  await ctx.scene.enter("instagram_scraper_hashtags", { projectId: projectId });
+  // Переходим в wizard-сцену для хештегов
+  await ctx.scene.enter("hashtag_wizard");
   return;
 }
 

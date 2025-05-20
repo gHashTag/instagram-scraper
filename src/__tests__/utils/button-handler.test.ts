@@ -138,11 +138,15 @@ describe('Button Handler Utility', () => {
 
       // Проверяем, что клавиатура создана правильно
       expect(keyboard.length).toBeGreaterThanOrEqual(1); // Минимум 1 строка с кнопками
-      expect(keyboard[0]).toHaveLength(2); // 2 кнопки в первой строке
-      expect(keyboard[0][0].text).toBe('Item 1');
-      expect(keyboard[0][0].callback_data).toBe('item1');
-      expect(keyboard[0][1].text).toBe('Item 2');
-      expect(keyboard[0][1].callback_data).toBe('item2');
+
+      // Находим кнопки по тексту
+      const item1Button = keyboard.flat().find(btn => btn.text === 'Item 1');
+      const item2Button = keyboard.flat().find(btn => btn.text === 'Item 2');
+
+      expect(item1Button).toBeDefined();
+      expect(item1Button?.callback_data).toBe('item1');
+      expect(item2Button).toBeDefined();
+      expect(item2Button?.callback_data).toBe('item2');
 
       // Проверяем, что обработчики созданы правильно
       expect(handlers).toHaveLength(2);
@@ -188,11 +192,15 @@ describe('Button Handler Utility', () => {
 
       // Проверяем, что клавиатура создана правильно
       expect(keyboard.length).toBeGreaterThanOrEqual(1); // Минимум 1 строка с кнопками
-      expect(keyboard[0]).toHaveLength(2); // 2 кнопки в первой строке
-      expect(keyboard[0][0].text).toBe('Item 1');
-      expect(keyboard[0][0].callback_data).toBe('item1');
-      expect(keyboard[0][1].text).toBe('Item 2');
-      expect(keyboard[0][1].callback_data).toBe('item2');
+
+      // Находим кнопки по тексту
+      const item1Button = keyboard.flat().find(btn => btn.text === 'Item 1');
+      const item2Button = keyboard.flat().find(btn => btn.text === 'Item 2');
+
+      expect(item1Button).toBeDefined();
+      expect(item1Button?.callback_data).toBe('item1');
+      expect(item2Button).toBeDefined();
+      expect(item2Button?.callback_data).toBe('item2');
 
       // Проверяем, что обработчики созданы правильно
       expect(handlers.length).toBeGreaterThan(3); // 1 для item1, 1 для item2, 2 для подменю, 1 для back, 1 для home

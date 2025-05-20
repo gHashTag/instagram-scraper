@@ -11,7 +11,7 @@ import { config } from "dotenv";
 config();
 
 // Пропускаем тесты, если нет ключа API или URL базы данных
-const skipTests = !process.env.OPENAI_API_KEY || !process.env.DATABASE_URL || !process.env.TELEGRAM_BOT_TOKEN;
+const skipTests = !process.env.OPENAI_API_KEY || !process.env.DATABASE_URL || !process.env.BOT_TOKEN;
 
 // Создаем описание тестов
 (skipTests ? describe.skip : describe)("Chatbot E2E Tests", () => {
@@ -40,7 +40,7 @@ const skipTests = !process.env.OPENAI_API_KEY || !process.env.DATABASE_URL || !p
     chatbotScene = new ChatbotScene(adapter, process.env.OPENAI_API_KEY);
 
     // Создаем бота и сцену
-    bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN as string);
+    bot = new Telegraf(process.env.BOT_TOKEN as string);
     stage = new Scenes.Stage([chatbotScene]);
     bot.use(stage.middleware());
 

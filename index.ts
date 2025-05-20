@@ -7,14 +7,23 @@
 
 import { Telegraf, Scenes } from "telegraf";
 import { competitorScene } from "./src/scenes/competitor-scene";
+import { competitorWizardScene, setupCompetitorWizard } from "./src/scenes/competitor-wizard-scene";
 import { projectScene } from "./src/scenes/project-scene";
+import { projectWizardScene, setupProjectWizard } from "./src/scenes/project-wizard-scene";
 import { hashtagScene } from "./src/scenes/hashtag-scene";
+import { hashtagWizardScene, setupHashtagWizard } from "./src/scenes/hashtag-wizard-scene";
 import { scrapingScene } from "./src/scenes/scraping-scene";
+import { scrapingWizardScene, setupScrapingWizard } from "./src/scenes/scraping-wizard-scene";
 import { reelsScene } from "./src/scenes/reels-scene";
+import { reelsWizardScene, setupReelsWizard } from "./src/scenes/reels-wizard-scene";
 import { analyticsScene } from "./src/scenes/analytics-scene";
+import { analyticsWizardScene, setupAnalyticsWizard } from "./src/scenes/analytics-wizard-scene";
 import { notificationScene } from "./src/scenes/notification-scene";
+import { notificationWizardScene, setupNotificationWizard } from "./src/scenes/notification-wizard-scene";
 import { ReelsCollectionScene } from "./src/scenes/reels-collection-scene";
+import { ReelsCollectionWizardScene, setupReelsCollectionWizard } from "./src/scenes/reels-collection-wizard-scene";
 import { ChatbotScene } from "./src/scenes/chatbot-scene";
+import { ChatbotWizardScene, setupChatbotWizard } from "./src/scenes/chatbot-wizard-scene";
 import type { Middleware } from "telegraf";
 import type {
   StorageAdapter,
@@ -76,14 +85,23 @@ export function setupInstagramScraperBot(
   // Инициализируем сцены
   const stage = new Scenes.Stage<ScraperBotContext>([
     projectScene,
+    projectWizardScene, // Добавляем новую визард-сцену для проектов
     competitorScene,
+    competitorWizardScene, // Добавляем новую визард-сцену для конкурентов
     hashtagScene,
+    hashtagWizardScene, // Добавляем новую визард-сцену для хештегов
     scrapingScene,
+    scrapingWizardScene, // Добавляем новую визард-сцену для скрапинга
     reelsScene,
+    reelsWizardScene, // Добавляем новую визард-сцену для просмотра Reels
     analyticsScene,
+    analyticsWizardScene, // Добавляем новую визард-сцену для аналитики
     notificationScene,
+    notificationWizardScene, // Добавляем новую визард-сцену для уведомлений
     new ReelsCollectionScene(storageAdapter),
+    new ReelsCollectionWizardScene(storageAdapter), // Добавляем новую визард-сцену для коллекций Reels
     new ChatbotScene(storageAdapter, process.env.OPENAI_API_KEY),
+    new ChatbotWizardScene(storageAdapter, process.env.OPENAI_API_KEY), // Добавляем новую визард-сцену для чат-бота
     // Здесь будут добавляться другие сцены
   ]);
 
@@ -98,88 +116,89 @@ export function setupInstagramScraperBot(
   // Подключаем Stage middleware
   bot.use(stage.middleware() as Middleware<ScraperBotContext>);
 
+  // Настраиваем обработчики для wizard-сцен
+  setupProjectWizard(bot);
+  setupCompetitorWizard(bot);
+  setupHashtagWizard(bot);
+  setupScrapingWizard(bot);
+  setupReelsWizard(bot);
+  setupAnalyticsWizard(bot);
+  setupNotificationWizard(bot);
+  setupReelsCollectionWizard(bot);
+  setupChatbotWizard(bot);
+
   // Регистрируем обработчики команд
   bot.command("projects", (ctx) =>
-    ctx.scene.enter("instagram_scraper_projects")
+    ctx.scene.enter("project_wizard")
   );
   bot.command("competitors", (ctx) =>
-    ctx.scene.enter("instagram_scraper_competitors")
+    ctx.scene.enter("competitor_wizard")
+  );
+  bot.command("hashtags", (ctx) =>
+    ctx.scene.enter("hashtag_wizard")
   );
   bot.command("scrape", (ctx) =>
-    ctx.scene.enter("instagram_scraper_scraping")
+    ctx.scene.enter("scraping_wizard")
   );
   bot.command("reels", (ctx) =>
-    ctx.scene.enter("instagram_scraper_reels")
+    ctx.scene.enter("reels_wizard")
   );
   bot.command("analytics", (ctx) =>
-    ctx.scene.enter("instagram_scraper_analytics")
+    ctx.scene.enter("analytics_wizard")
   );
   bot.command("notifications", (ctx) =>
-    ctx.scene.enter("instagram_scraper_notifications")
+    ctx.scene.enter("notification_wizard")
   );
   bot.command("collections", (ctx) =>
-    ctx.scene.enter("reels_collection_scene")
+    ctx.scene.enter("reels_collection_wizard")
   );
   bot.command("chatbot", (ctx) =>
-    ctx.scene.enter("chatbot_scene")
+    ctx.scene.enter("chatbot_wizard")
   );
 
   // Обработчики текстовых сообщений для меню
   bot.hears("📊 Проекты", (ctx) =>
-    ctx.scene.enter("instagram_scraper_projects")
+    ctx.scene.enter("project_wizard")
   );
-  bot.hears("🔍 Конкуренты", async (ctx) => {
+  bot.hears("🔍 Конкуренты", (ctx) => {
     console.log("[DEBUG] Обработчик кнопки '🔍 Конкуренты' вызван");
-    try {
-      // Проверяем наличие ctx.session и инициализируем, если отсутствует
-      if (!ctx.session) {
-        console.log("[DEBUG] Инициализируем ctx.session в обработчике кнопки 'Конкуренты'");
-        ctx.session = {};
-      }
-
-      // Проверяем наличие ctx.scene.session и инициализируем, если отсутствует
-      if (!ctx.scene.session) {
-        console.log("[DEBUG] Инициализируем ctx.scene.session в обработчике кнопки 'Конкуренты'");
-        (ctx.scene as any).session = {};
-      }
-
-      await ctx.scene.enter("instagram_scraper_competitors");
-      console.log("[DEBUG] Успешно вошли в сцену конкурентов");
-    } catch (error) {
-      console.error("[ERROR] Ошибка при входе в сцену конкурентов:", error);
-      await ctx.reply("Произошла ошибка при входе в режим управления конкурентами. Попробуйте еще раз.");
-    }
+    return ctx.scene.enter("competitor_wizard");
+  });
+  bot.hears("#️⃣ Хэштеги", (ctx) => {
+    console.log("[DEBUG] Обработчик кнопки '#️⃣ Хэштеги' вызван");
+    return ctx.scene.enter("hashtag_wizard");
   });
   bot.hears("🎬 Запустить скрапинг", (ctx) =>
-    ctx.scene.enter("instagram_scraper_scraping")
+    ctx.scene.enter("scraping_wizard")
   );
   bot.hears("👀 Просмотр Reels", (ctx) =>
-    ctx.scene.enter("instagram_scraper_reels")
+    ctx.scene.enter("reels_wizard")
   );
   bot.hears("📈 Аналитика", (ctx) =>
-    ctx.scene.enter("instagram_scraper_analytics")
+    ctx.scene.enter("analytics_wizard")
   );
   bot.hears("🔔 Уведомления", (ctx) =>
-    ctx.scene.enter("instagram_scraper_notifications")
+    ctx.scene.enter("notification_wizard")
   );
   bot.hears("📋 Коллекции Reels", (ctx) =>
-    ctx.scene.enter("reels_collection_scene")
+    ctx.scene.enter("reels_collection_wizard")
   );
   bot.hears("🤖 Чат-бот", (ctx) =>
-    ctx.scene.enter("chatbot_scene")
+    ctx.scene.enter("chatbot_wizard")
   );
 
   // Возвращаем API модуля
   return {
     // Методы для входа в сцены
-    enterProjectScene: () => "instagram_scraper_projects",
-    enterCompetitorScene: () => "instagram_scraper_competitors",
-    enterScrapingScene: () => "instagram_scraper_scraping",
-    enterReelsScene: () => "instagram_scraper_reels",
-    enterAnalyticsScene: () => "instagram_scraper_analytics",
-    enterNotificationScene: () => "instagram_scraper_notifications",
-    enterReelsCollectionScene: () => "reels_collection_scene",
-    enterChatbotScene: () => "chatbot_scene",
+    enterProjectScene: () => "project_wizard",
+    enterCompetitorScene: () => "competitor_wizard",
+    enterHashtagScene: () => "hashtag_wizard",
+    enterScrapingScene: () => "scraping_wizard",
+    enterReelsScene: () => "reels_wizard",
+    enterAnalyticsScene: () => "analytics_wizard",
+    enterNotificationScene: () => "notification_wizard",
+    enterReelsCollectionScene: () => "reels_collection_wizard",
+    enterChatbotScene: () => "chatbot_wizard",
 
     // Получение кнопок для меню
     getMenuButtons: () => [

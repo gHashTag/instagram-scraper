@@ -57,9 +57,28 @@ export const CompetitorSchema = z.object({
   id: z.number(),
   project_id: z.number(),
   username: z.string(),
-  instagram_url: z.string(),
-  created_at: z.string(),
-  is_active: z.boolean(),
+  instagram_url: z.string().optional(), // Может быть profile_url в БД
+  profile_url: z.string().optional(),   // Альтернативное название поля
+  created_at: z.union([z.string(), z.date()]).optional(),    // Может быть added_at или другое поле в БД
+  added_at: z.union([z.string(), z.date()]).optional(),      // Альтернативное название поля
+  is_active: z.boolean().optional().default(true),
+  full_name: z.string().nullable().optional(),
+  notes: z.string().nullable().optional(),
+  last_scraped_at: z.union([z.string(), z.date(), z.null()]).optional(),
+  updated_at: z.union([z.string(), z.date()]).optional(),
+}).transform(data => {
+  // Нормализуем данные, чтобы они соответствовали ожидаемой схеме
+  const createdAt = data.created_at || data.added_at || new Date();
+  const createdAtStr = createdAt instanceof Date ? createdAt.toISOString() : createdAt;
+
+  return {
+    id: data.id,
+    project_id: data.project_id,
+    username: data.username,
+    instagram_url: data.instagram_url || data.profile_url || '',
+    created_at: createdAtStr,
+    is_active: data.is_active === undefined ? true : data.is_active
+  };
 });
 
 /**

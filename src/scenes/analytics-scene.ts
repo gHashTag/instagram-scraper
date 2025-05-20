@@ -7,6 +7,44 @@ import { formatDate, formatViews } from "./components/reels-keyboard";
 import { registerButtons } from "../utils/button-handler";
 
 /**
+ * Очищает состояние сессии перед выходом из сцены
+ * @param ctx Контекст Telegraf
+ * @param reason Причина очистки состояния (для логирования)
+ */
+function clearSessionState(ctx: ScraperBotContext, reason: string = "general"): void {
+  if (ctx.scene.session) {
+    logger.info(`[AnalyticsScene] Clearing session state before leaving (reason: ${reason})`);
+    // Очистка всех необходимых полей состояния
+    ctx.scene.session.textReport = undefined;
+    ctx.scene.session.csvReport = undefined;
+    ctx.scene.session.currentProjectId = undefined;
+    ctx.scene.session.step = undefined;
+  }
+}
+
+/**
+ * Выполняет безопасный переход в другую сцену с обработкой ошибок
+ * @param ctx Контекст Telegraf
+ * @param targetScene Целевая сцена
+ * @param reason Причина перехода (для логирования)
+ * @param state Дополнительные параметры для передачи в целевую сцену
+ */
+async function safeSceneTransition(
+  ctx: ScraperBotContext,
+  targetScene: string = "instagram_scraper_projects",
+  reason: string = "general",
+  state: Record<string, any> = {}
+): Promise<void> {
+  try {
+    logger.info(`[AnalyticsScene] Transitioning to ${targetScene} scene (reason: ${reason})`);
+    await ctx.scene.enter(targetScene, state);
+  } catch (error) {
+    logger.error(`[AnalyticsScene] Error entering ${targetScene} scene:`, error);
+    await ctx.scene.leave();
+  }
+}
+
+/**
  * Сцена для аналитики Reels
  */
 export const analyticsScene = new Scenes.BaseScene<ScraperBotContext>(
@@ -22,7 +60,10 @@ export async function handleAnalyticsEnter(ctx: ScraperBotContext): Promise<void
     await ctx.reply(
       "Не удалось определить пользователя. Попробуйте перезапустить бота командой /start."
     );
-    ctx.scene.leave();
+
+    // Очистка состояния и безопасный переход в другую сцену
+    clearSessionState(ctx, "missing_user");
+    await safeSceneTransition(ctx, "instagram_scraper_projects", "missing_user");
     return;
   }
 
@@ -82,7 +123,10 @@ export async function handleAnalyticsEnter(ctx: ScraperBotContext): Promise<void
     await ctx.reply(
       "Произошла ошибка при загрузке данных. Попробуйте еще раз."
     );
-    await ctx.scene.leave();
+
+    // Очистка состояния и безопасный переход в другую сцену
+    clearSessionState(ctx, "data_loading_error");
+    await safeSceneTransition(ctx, "instagram_scraper_projects", "data_loading_error");
   } finally {
     await ctx.storage.close();
   }
@@ -1038,7 +1082,9 @@ export async function handleBackToProjectAction(ctx: ScraperBotContext): Promise
     await ctx.answerCbQuery();
   }
 
-  ctx.scene.enter("instagram_scraper_projects", { projectId });
+  // Очистка состояния и безопасный переход в другую сцену
+  clearSessionState(ctx, "back_to_project_clicked");
+  await safeSceneTransition(ctx, "instagram_scraper_projects", "back_to_project_clicked", { projectId });
 }
 
 // Регистрация обработчиков кнопок с использованием централизованного обработчика
@@ -1099,13 +1145,16 @@ registerButtons(analyticsScene, [
   },
   {
     id: /reels_list_(\d+)/,
-    handler: (ctx) => {
+    handler: async (ctx) => {
       const match = ctx.match as unknown as RegExpExecArray;
       const projectId = parseInt(match[1], 10);
       if (ctx.callbackQuery) {
-        ctx.answerCbQuery().catch(() => {});
+        await ctx.answerCbQuery().catch(() => {});
       }
-      return ctx.scene.enter("instagram_scraper_reels", { projectId });
+
+      // Очистка состояния и безопасный переход в другую сцену
+      clearSessionState(ctx, "back_to_reels_list_clicked");
+      await safeSceneTransition(ctx, "instagram_scraper_reels", "back_to_reels_list_clicked", { projectId });
     },
     errorMessage: "Произошла ошибка при возврате к списку Reels. Попробуйте еще раз.",
     verbose: true

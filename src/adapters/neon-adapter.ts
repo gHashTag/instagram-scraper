@@ -14,6 +14,7 @@ import {
   validateUser,
   validateProject,
   validateCompetitors,
+  validateCompetitor,
 } from "../utils/validation-zod";
 
 /**
@@ -216,16 +217,67 @@ export class NeonAdapter implements StorageAdapter {
 
   async getCompetitorsByProjectId(projectId: number): Promise<Competitor[]> {
     try {
+      console.log(`[DEBUG] NeonAdapter.getCompetitorsByProjectId: Получение конкурентов для проекта с ID: ${projectId}`);
+
+      // Проверяем структуру таблицы competitors
+      try {
+        const tableInfo = await this.safeQuery(
+          "SELECT column_name FROM information_schema.columns WHERE table_name = 'competitors'"
+        );
+        console.log(`[DEBUG] NeonAdapter.getCompetitorsByProjectId: Структура таблицы competitors:`,
+          tableInfo.rows.map((row: any) => row.column_name));
+      } catch (schemaError) {
+        console.error(`[ERROR] NeonAdapter.getCompetitorsByProjectId: Ошибка при получении структуры таблицы:`, schemaError);
+      }
+
+      // Проверяем существование таблицы competitors
+      try {
+        const tableExists = await this.safeQuery(
+          "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'competitors')"
+        );
+        console.log(`[DEBUG] NeonAdapter.getCompetitorsByProjectId: Таблица competitors существует: ${tableExists.rows[0].exists}`);
+      } catch (tableError) {
+        console.error(`[ERROR] NeonAdapter.getCompetitorsByProjectId: Ошибка при проверке существования таблицы:`, tableError);
+      }
+
       const pool = this.ensureConnection();
-      const res = await pool.query(
-        "SELECT * FROM competitors WHERE project_id = $1",
-        [projectId]
-      );
+
+      // Формируем SQL-запрос
+      const query = "SELECT * FROM competitors WHERE project_id = $1";
+      console.log(`[DEBUG] NeonAdapter.getCompetitorsByProjectId: SQL-запрос: ${query}, параметры: [${projectId}]`);
+
+      // Выполняем запрос
+      const res = await pool.query(query, [projectId]);
+
+      console.log(`[DEBUG] NeonAdapter.getCompetitorsByProjectId: Получено строк из БД: ${res.rows.length}`);
+      if (res.rows.length > 0) {
+        console.log(`[DEBUG] NeonAdapter.getCompetitorsByProjectId: Первый конкурент:`, JSON.stringify(res.rows[0], null, 2));
+      } else {
+        console.log(`[DEBUG] NeonAdapter.getCompetitorsByProjectId: Конкуренты не найдены для проекта ${projectId}`);
+
+        // Проверяем, есть ли вообще записи в таблице
+        try {
+          const allCompetitors = await pool.query("SELECT COUNT(*) FROM competitors");
+          console.log(`[DEBUG] NeonAdapter.getCompetitorsByProjectId: Всего записей в таблице competitors: ${allCompetitors.rows[0].count}`);
+
+          if (parseInt(allCompetitors.rows[0].count) > 0) {
+            const sampleCompetitors = await pool.query("SELECT * FROM competitors LIMIT 1");
+            console.log(`[DEBUG] NeonAdapter.getCompetitorsByProjectId: Пример записи из таблицы:`,
+              JSON.stringify(sampleCompetitors.rows[0], null, 2));
+          }
+        } catch (countError) {
+          console.error(`[ERROR] NeonAdapter.getCompetitorsByProjectId: Ошибка при подсчете записей:`, countError);
+        }
+      }
 
       // Валидируем данные с помощью Zod
-      return validateCompetitors(res.rows);
+      console.log(`[DEBUG] NeonAdapter.getCompetitorsByProjectId: Начинаем валидацию данных...`);
+      const validatedCompetitors = validateCompetitors(res.rows);
+      console.log(`[DEBUG] NeonAdapter.getCompetitorsByProjectId: После валидации получено конкурентов: ${validatedCompetitors.length}`);
+
+      return validatedCompetitors;
     } catch (error) {
-      console.error("Ошибка при получении конкурентов из Neon:", error);
+      console.error("[ERROR] Ошибка при получении конкурентов из Neon:", error);
       return [];
     }
   }
@@ -299,6 +351,50 @@ export class NeonAdapter implements StorageAdapter {
       console.error("Ошибка при создании пользователя в Neon:", error);
       throw new Error(
         `Ошибка при создании пользователя: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
+  /**
+   * Сохраняет пользователя в базе данных
+   * @param userData Данные пользователя
+   * @returns Сохраненный пользователь
+   */
+  async saveUser(userData: { telegramId: number; username?: string; firstName?: string; lastName?: string }): Promise<User> {
+    console.log(`[DEBUG] NeonAdapter.saveUser: Сохранение пользователя с telegramId=${userData.telegramId}`);
+    try {
+      // Проверяем, существует ли пользователь
+      const existingUser = await this.getUserByTelegramId(userData.telegramId);
+
+      if (existingUser) {
+        console.log(`[DEBUG] NeonAdapter.saveUser: Пользователь с telegramId=${userData.telegramId} уже существует, обновляем данные`);
+        // Если пользователь существует, обновляем его данные
+        const res = await this.safeQuery(
+          "UPDATE users SET username = $2, first_name = $3, last_name = $4 WHERE telegram_id = $1 RETURNING *",
+          [userData.telegramId, userData.username || null, userData.firstName || null, userData.lastName || null]
+        );
+
+        // Валидируем данные с помощью Zod
+        const validatedUser = validateUser(res.rows[0]);
+        if (!validatedUser) {
+          throw new Error("Не удалось валидировать обновленного пользователя");
+        }
+
+        return validatedUser;
+      } else {
+        console.log(`[DEBUG] NeonAdapter.saveUser: Пользователь с telegramId=${userData.telegramId} не найден, создаем нового`);
+        // Если пользователь не существует, создаем нового
+        return this.createUser(
+          userData.telegramId,
+          userData.username,
+          userData.firstName,
+          userData.lastName
+        );
+      }
+    } catch (error) {
+      console.error("[ERROR] Ошибка при сохранении пользователя в Neon:", error);
+      throw new Error(
+        `Ошибка при сохранении пользователя: ${error instanceof Error ? error.message : String(error)}`
       );
     }
   }
@@ -908,17 +1004,55 @@ export class NeonAdapter implements StorageAdapter {
     username: string,
     instagramUrl: string
   ): Promise<Competitor | null> {
-    const query =
-      "INSERT INTO competitors (project_id, username, instagram_url) VALUES ($1, $2, $3) RETURNING *";
+    console.log(`[DEBUG] NeonAdapter.addCompetitorAccount: Добавление конкурента. projectId=${projectId}, username=${username}, instagramUrl=${instagramUrl}`);
+
+    // Проверяем структуру таблицы competitors
     try {
+      const tableInfo = await this.safeQuery(
+        "SELECT column_name FROM information_schema.columns WHERE table_name = 'competitors'"
+      );
+      console.log(`[DEBUG] NeonAdapter.addCompetitorAccount: Структура таблицы competitors:`,
+        tableInfo.rows.map((row: any) => row.column_name));
+
+      // Определяем, какое поле использовать для URL
+      const hasInstagramUrl = tableInfo.rows.some((row: any) => row.column_name === 'instagram_url');
+      const hasProfileUrl = tableInfo.rows.some((row: any) => row.column_name === 'profile_url');
+
+      let query = "";
+      if (hasInstagramUrl) {
+        query = "INSERT INTO competitors (project_id, username, instagram_url) VALUES ($1, $2, $3) RETURNING *";
+      } else if (hasProfileUrl) {
+        query = "INSERT INTO competitors (project_id, username, profile_url) VALUES ($1, $2, $3) RETURNING *";
+      } else {
+        throw new Error("В таблице competitors нет полей instagram_url или profile_url");
+      }
+
+      console.log(`[DEBUG] NeonAdapter.addCompetitorAccount: Используемый SQL запрос: ${query}`);
+
       const result = await this.safeQuery(query, [
         projectId,
         username,
         instagramUrl,
       ]);
-      return result.rows[0] || null;
+
+      console.log(`[DEBUG] NeonAdapter.addCompetitorAccount: Результат запроса:`, result.rows[0]);
+
+      // Валидируем результат
+      if (result.rows[0]) {
+        try {
+          const validatedCompetitor = validateCompetitor(result.rows[0]);
+          console.log(`[DEBUG] NeonAdapter.addCompetitorAccount: Результат валидации:`, validatedCompetitor);
+          return validatedCompetitor;
+        } catch (validationError) {
+          console.error(`[ERROR] NeonAdapter.addCompetitorAccount: Ошибка валидации:`, validationError);
+          // Возвращаем данные без валидации в крайнем случае
+          return result.rows[0];
+        }
+      }
+
+      return null;
     } catch (error) {
-      console.error("Error adding competitor account:", error);
+      console.error("[ERROR] NeonAdapter.addCompetitorAccount: Ошибка при добавлении конкурента:", error);
       return null;
     }
   }
