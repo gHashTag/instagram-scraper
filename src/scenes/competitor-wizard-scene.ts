@@ -426,7 +426,7 @@ competitorWizardScene.action("add_competitor", async (ctx: any) => {
 
 competitorWizardScene.action("refresh_competitors", async (ctx: any) => {
   console.log(`[DEBUG] Обработчик кнопки 'refresh_competitors' вызван`);
-  await ctx.answerCbQuery();
+  await ctx.answerCbQuery("Обновление списка...");
 
   // Очищаем список конкурентов в состоянии, чтобы он был обновлен при переходе на шаг 2
   if (ctx.wizard && ctx.wizard.state) {
@@ -438,6 +438,39 @@ competitorWizardScene.action("refresh_competitors", async (ctx: any) => {
   console.log(`[DEBUG] Переход к шагу 1 (список конкурентов) и его выполнение`);
 
   try {
+    // Сначала отправляем сообщение о том, что список обновляется
+    await ctx.reply("Обновление списка конкурентов...");
+
+    // Получаем список конкурентов напрямую из базы данных
+    const projectId = ctx.wizard.state.projectId;
+    const competitorsCount = await ctx.storage.executeQuery(
+      "SELECT COUNT(*) as count FROM competitors WHERE project_id = $1",
+      [projectId]
+    );
+    console.log(`[DEBUG] Количество конкурентов в базе данных: ${competitorsCount.rows[0].count}`);
+
+    if (parseInt(competitorsCount.rows[0].count) > 0) {
+      const competitorsData = await ctx.storage.executeQuery(
+        "SELECT * FROM competitors WHERE project_id = $1",
+        [projectId]
+      );
+      console.log(`[DEBUG] Получено конкурентов из базы данных: ${competitorsData.rows.length}`);
+
+      if (competitorsData.rows.length > 0) {
+        // Преобразуем данные в формат Competitor
+        const competitors = competitorsData.rows.map((row: any) => ({
+          id: row.id,
+          project_id: row.project_id,
+          username: row.username,
+          instagram_url: row.instagram_url || row.profile_url || '',
+          created_at: row.created_at || row.added_at || new Date().toISOString(),
+          is_active: row.is_active === undefined ? true : row.is_active
+        }));
+
+        ctx.wizard.state.competitors = competitors;
+      }
+    }
+
     // Вызываем шаг 2 напрямую
     console.log(`[DEBUG] Вызов шага 2 напрямую`);
     await ctx.wizard.selectStep(1);
@@ -469,7 +502,7 @@ competitorWizardScene.action("add_more", async (ctx: any) => {
 
 competitorWizardScene.action("back_to_list", async (ctx: any) => {
   console.log(`[DEBUG] Обработчик кнопки 'back_to_list' вызван`);
-  await ctx.answerCbQuery();
+  await ctx.answerCbQuery("Возврат к списку...");
 
   // Очищаем список конкурентов в состоянии, чтобы он был обновлен при переходе на шаг 2
   if (ctx.wizard && ctx.wizard.state) {
@@ -481,6 +514,36 @@ competitorWizardScene.action("back_to_list", async (ctx: any) => {
   console.log(`[DEBUG] Переход к шагу 1 (список конкурентов)`);
 
   try {
+    // Получаем список конкурентов напрямую из базы данных
+    const projectId = ctx.wizard.state.projectId;
+    const competitorsCount = await ctx.storage.executeQuery(
+      "SELECT COUNT(*) as count FROM competitors WHERE project_id = $1",
+      [projectId]
+    );
+    console.log(`[DEBUG] Количество конкурентов в базе данных: ${competitorsCount.rows[0].count}`);
+
+    if (parseInt(competitorsCount.rows[0].count) > 0) {
+      const competitorsData = await ctx.storage.executeQuery(
+        "SELECT * FROM competitors WHERE project_id = $1",
+        [projectId]
+      );
+      console.log(`[DEBUG] Получено конкурентов из базы данных: ${competitorsData.rows.length}`);
+
+      if (competitorsData.rows.length > 0) {
+        // Преобразуем данные в формат Competitor
+        const competitors = competitorsData.rows.map((row: any) => ({
+          id: row.id,
+          project_id: row.project_id,
+          username: row.username,
+          instagram_url: row.instagram_url || row.profile_url || '',
+          created_at: row.created_at || row.added_at || new Date().toISOString(),
+          is_active: row.is_active === undefined ? true : row.is_active
+        }));
+
+        ctx.wizard.state.competitors = competitors;
+      }
+    }
+
     // Вызываем шаг 2 напрямую
     console.log(`[DEBUG] Вызов шага 2 напрямую`);
     await ctx.wizard.selectStep(1);
@@ -493,41 +556,69 @@ competitorWizardScene.action("back_to_list", async (ctx: any) => {
 });
 
 // Добавляем обработчик для удаления конкурентов
-// Динамически регистрируем обработчики для всех возможных ID проектов
-for (let i = 1; i <= 100; i++) {
-  competitorWizardScene.action(new RegExp(`delete_competitor_${i}_(.+)`), async (ctx: any) => {
-    console.log(`[DEBUG] Обработчик кнопки 'delete_competitor_${i}' вызван`);
-    await ctx.answerCbQuery();
+// Используем один обработчик с регулярным выражением для всех проектов
+competitorWizardScene.action(/delete_competitor_(\d+)_(.+)/, async (ctx: any) => {
+  console.log(`[DEBUG] Обработчик кнопки 'delete_competitor' вызван`);
+  await ctx.answerCbQuery("Удаление конкурента...");
 
-    const username = ctx.match[1];
-    console.log(`[DEBUG] Удаление конкурента: projectId=${i}, username=${username}`);
+  const projectId = parseInt(ctx.match[1]);
+  const username = ctx.match[2];
+  console.log(`[DEBUG] Удаление конкурента: projectId=${projectId}, username=${username}`);
 
-    try {
-      // Удаляем конкурента
-      const success = await ctx.storage.deleteCompetitorAccount(i, username);
+  try {
+    // Удаляем конкурента
+    const success = await ctx.storage.deleteCompetitorAccount(projectId, username);
 
-      if (success) {
-        await ctx.reply(`Конкурент @${username} успешно удален!`);
-      } else {
-        await ctx.reply(`Не удалось удалить конкурента @${username}. Возможно, он уже был удален.`);
-      }
-
-      // Очищаем список конкурентов в состоянии, чтобы он был обновлен при переходе на шаг 2
-      if (ctx.wizard && ctx.wizard.state) {
-        delete ctx.wizard.state.competitors;
-      }
-
-      // Возвращаемся к списку конкурентов
-      console.log(`[DEBUG] Возврат к списку конкурентов после удаления`);
-      await ctx.wizard.selectStep(1);
-      return ctx.wizard.steps[1](ctx);
-    } catch (error) {
-      console.error(`[ERROR] Ошибка при удалении конкурента:`, error);
-      await ctx.reply("Произошла ошибка при удалении конкурента. Пожалуйста, попробуйте позже.");
-      return ctx.wizard.selectStep(1);
+    if (success) {
+      await ctx.reply(`Конкурент @${username} успешно удален!`);
+    } else {
+      await ctx.reply(`Не удалось удалить конкурента @${username}. Возможно, он уже был удален.`);
     }
-  });
-}
+
+    // Очищаем список конкурентов в состоянии, чтобы он был обновлен при переходе на шаг 2
+    if (ctx.wizard && ctx.wizard.state) {
+      delete ctx.wizard.state.competitors;
+    }
+
+    // Получаем список конкурентов напрямую из базы данных
+    const competitorsCount = await ctx.storage.executeQuery(
+      "SELECT COUNT(*) as count FROM competitors WHERE project_id = $1",
+      [projectId]
+    );
+    console.log(`[DEBUG] Количество конкурентов в базе данных после удаления: ${competitorsCount.rows[0].count}`);
+
+    if (parseInt(competitorsCount.rows[0].count) > 0) {
+      const competitorsData = await ctx.storage.executeQuery(
+        "SELECT * FROM competitors WHERE project_id = $1",
+        [projectId]
+      );
+      console.log(`[DEBUG] Получено конкурентов из базы данных после удаления: ${competitorsData.rows.length}`);
+
+      if (competitorsData.rows.length > 0) {
+        // Преобразуем данные в формат Competitor
+        const competitors = competitorsData.rows.map((row: any) => ({
+          id: row.id,
+          project_id: row.project_id,
+          username: row.username,
+          instagram_url: row.instagram_url || row.profile_url || '',
+          created_at: row.created_at || row.added_at || new Date().toISOString(),
+          is_active: row.is_active === undefined ? true : row.is_active
+        }));
+
+        ctx.wizard.state.competitors = competitors;
+      }
+    }
+
+    // Возвращаемся к списку конкурентов
+    console.log(`[DEBUG] Возврат к списку конкурентов после удаления`);
+    await ctx.wizard.selectStep(1);
+    return ctx.wizard.steps[1](ctx);
+  } catch (error) {
+    console.error(`[ERROR] Ошибка при удалении конкурента:`, error);
+    await ctx.reply("Произошла ошибка при удалении конкурента. Пожалуйста, попробуйте позже.");
+    return ctx.wizard.selectStep(1);
+  }
+});
 
 // Добавляем обработчик для команды /competitors
 export function setupCompetitorWizard(bot: any) {
