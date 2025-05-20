@@ -264,10 +264,25 @@ export const competitorWizardScene = new Scenes.WizardScene<ScraperBotContext>(
           message += `${index + 1}. @${competitor.username} - ${competitor.instagram_url}\n`;
         });
 
-        await ctx.reply(message, Markup.inlineKeyboard([
+        // Создаем кнопки для удаления каждого конкурента
+        const deleteButtons = competitors.map((competitor: Competitor) => [
+          Markup.button.callback(
+            `🗑️ Удалить @${competitor.username}`,
+            `delete_competitor_${projectId}_${competitor.username}`
+          )
+        ]);
+
+        // Добавляем основные кнопки управления
+        const controlButtons = [
           [Markup.button.callback("➕ Добавить конкурента", "add_competitor")],
           [Markup.button.callback("🔄 Обновить список", "refresh_competitors")],
           [Markup.button.callback("❌ Выйти", "exit_wizard")]
+        ];
+
+        // Объединяем все кнопки
+        await ctx.reply(message, Markup.inlineKeyboard([
+          ...deleteButtons,
+          ...controlButtons
         ]));
       }
 
@@ -416,10 +431,22 @@ competitorWizardScene.action("refresh_competitors", async (ctx: any) => {
   // Очищаем список конкурентов в состоянии, чтобы он был обновлен при переходе на шаг 2
   if (ctx.wizard && ctx.wizard.state) {
     delete ctx.wizard.state.competitors;
+    console.log(`[DEBUG] Очищен список конкурентов в состоянии`);
   }
 
   // Перезапускаем текущий шаг
-  return ctx.wizard.selectStep(1);
+  console.log(`[DEBUG] Переход к шагу 1 (список конкурентов) и его выполнение`);
+
+  try {
+    // Вызываем шаг 2 напрямую
+    console.log(`[DEBUG] Вызов шага 2 напрямую`);
+    await ctx.wizard.selectStep(1);
+    return ctx.wizard.steps[1](ctx);
+  } catch (error) {
+    console.error(`[ERROR] Ошибка при обновлении списка конкурентов:`, error);
+    await ctx.reply("Произошла ошибка при обновлении списка конкурентов. Попробуйте еще раз.");
+    return ctx.wizard.selectStep(1);
+  }
 });
 
 competitorWizardScene.action("exit_wizard", async (ctx: any) => {
@@ -464,6 +491,43 @@ competitorWizardScene.action("back_to_list", async (ctx: any) => {
     return ctx.wizard.selectStep(1);
   }
 });
+
+// Добавляем обработчик для удаления конкурентов
+// Динамически регистрируем обработчики для всех возможных ID проектов
+for (let i = 1; i <= 100; i++) {
+  competitorWizardScene.action(new RegExp(`delete_competitor_${i}_(.+)`), async (ctx: any) => {
+    console.log(`[DEBUG] Обработчик кнопки 'delete_competitor_${i}' вызван`);
+    await ctx.answerCbQuery();
+
+    const username = ctx.match[1];
+    console.log(`[DEBUG] Удаление конкурента: projectId=${i}, username=${username}`);
+
+    try {
+      // Удаляем конкурента
+      const success = await ctx.storage.deleteCompetitorAccount(i, username);
+
+      if (success) {
+        await ctx.reply(`Конкурент @${username} успешно удален!`);
+      } else {
+        await ctx.reply(`Не удалось удалить конкурента @${username}. Возможно, он уже был удален.`);
+      }
+
+      // Очищаем список конкурентов в состоянии, чтобы он был обновлен при переходе на шаг 2
+      if (ctx.wizard && ctx.wizard.state) {
+        delete ctx.wizard.state.competitors;
+      }
+
+      // Возвращаемся к списку конкурентов
+      console.log(`[DEBUG] Возврат к списку конкурентов после удаления`);
+      await ctx.wizard.selectStep(1);
+      return ctx.wizard.steps[1](ctx);
+    } catch (error) {
+      console.error(`[ERROR] Ошибка при удалении конкурента:`, error);
+      await ctx.reply("Произошла ошибка при удалении конкурента. Пожалуйста, попробуйте позже.");
+      return ctx.wizard.selectStep(1);
+    }
+  });
+}
 
 // Добавляем обработчик для команды /competitors
 export function setupCompetitorWizard(bot: any) {
