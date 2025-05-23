@@ -172,6 +172,9 @@ export function createButtonHandler(options: ButtonOptions) {
       ? ctx.callbackQuery.data
       : undefined;
 
+    console.log(`[BUTTON_HANDLER_DEBUG] Нажата кнопка: ${buttonId}, данные: ${callbackData}, пользователь: ${userId}`);
+    console.log(`[BUTTON_HANDLER_DEBUG] Сессия: ${!!ctx.session}, сессия сцены: ${!!ctx.scene?.session}`);
+
     logger.userAction(`Нажата кнопка: ${buttonId}`, {
       userId,
       username,
@@ -361,6 +364,8 @@ export function registerButton(
     ? options.id
     : options.id.toString();
 
+  console.log(`[BUTTON_HANDLER_DEBUG] Зарегистрирован обработчик для ${buttonId} в сцене ${scene.id}`);
+
   logger.debug(`Зарегистрирован обработчик для ${buttonId}`, {
     type: LogType.SYSTEM,
     data: {
@@ -444,6 +449,14 @@ export function registerButtons(
   scene: Scenes.BaseScene<ScraperBotContext>,
   optionsArray: ButtonOptions[]
 ) {
+  console.log(`[BUTTON_HANDLER_DEBUG] Начало регистрации ${optionsArray.length} обработчиков кнопок в сцене ${scene.id}`);
+
+  // Выводим список всех кнопок для отладки
+  optionsArray.forEach((option, index) => {
+    const buttonId = typeof option.id === 'string' ? option.id : option.id.toString();
+    console.log(`[BUTTON_HANDLER_DEBUG] Кнопка #${index + 1}: ID=${buttonId}, вербозный=${option.verbose || false}`);
+  });
+
   logger.info(`Регистрация ${optionsArray.length} обработчиков кнопок в сцене ${scene.id}`, {
     type: LogType.SYSTEM,
     data: {
@@ -453,15 +466,18 @@ export function registerButtons(
   });
 
   for (const options of optionsArray) {
+    const buttonId = typeof options.id === 'string' ? options.id : options.id.toString();
+    console.log(`[BUTTON_HANDLER_DEBUG] Регистрируем кнопку: ${buttonId}`);
     registerButton(scene, options);
 
     // Если включена опция отмены действия, регистрируем обработчик для кнопки отмены
     if (options.errorHandling?.showCancelButton) {
-      const buttonId = typeof options.id === 'string' ? options.id : options.id.toString();
       registerCancelHandler(scene, buttonId, options.errorHandling?.onCancel);
+      console.log(`[BUTTON_HANDLER_DEBUG] Зарегистрирован обработчик отмены для кнопки: ${buttonId}`);
     }
   }
 
+  console.log(`[BUTTON_HANDLER_DEBUG] Завершена регистрация ${optionsArray.length} обработчиков кнопок в сцене ${scene.id}`);
   logger.info(`Зарегистрировано ${optionsArray.length} обработчиков кнопок в сцене ${scene.id}`, {
     type: LogType.SYSTEM
   });
