@@ -9,10 +9,12 @@ import type { Project } from "@/types"; // Раскомментировано и
 export function generateProjectsKeyboard(projects: Project[]) {
   if (!projects || projects.length === 0) {
     console.log("[DEBUG] Нет проектов, добавляем кнопку 'Создать проект' с callback_data='create_project'");
-    return Markup.inlineKeyboard([
+    const keyboard = Markup.inlineKeyboard([
       [Markup.button.callback("Создать проект", "create_project")],
       [Markup.button.callback("Выйти", "exit_scene")],
     ]);
+    console.log("[DEBUG] Сгенерированная клавиатура для пустого списка проектов:", JSON.stringify(keyboard.reply_markup));
+    return keyboard;
   }
 
   const projectButtons = projects.map((project) => [
@@ -28,7 +30,9 @@ export function generateProjectsKeyboard(projects: Project[]) {
   console.log("[DEBUG] Добавлена кнопка 'Создать новый проект' с callback_data='create_project'");
   projectButtons.push([Markup.button.callback("Выйти", "exit_scene")]);
 
-  return Markup.inlineKeyboard(projectButtons);
+  const keyboard = Markup.inlineKeyboard(projectButtons);
+  console.log("[DEBUG] Сгенерированная клавиатура для списка проектов:", JSON.stringify(keyboard.reply_markup));
+  return keyboard;
 }
 
 /**
