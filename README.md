@@ -200,6 +200,18 @@ PARSING_LIMIT=100         # Лимит Reels для получения с Apify 
    - Симуляция различных ошибок и граничных случаев
    - Настраиваемые сценарии тестирования
 
+### Экспорт данных в Obsidian
+
+Для вывода списка конкурентов в Obsidian используется скрипт:
+
+```bash
+bun run export:obsidian
+```
+
+Перед запуском убедитесь, что в `.env` указаны переменные `OBSIDIAN_VAULT_PATH`
+и `EXPORT_USER_ID` (если не передается `projectId` аргументом). Скрипт создаст
+файл `project-<id>.md` в папке `competitors` вашего Obsidian Vault.
+
 ## License
 
 MIT
