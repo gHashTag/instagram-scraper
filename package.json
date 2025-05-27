@@ -38,7 +38,8 @@
     "db:seed": "dotenv -e .env.development -- tsx scripts/seed-database.ts",
     "generate:tests": "bun run scripts/generate-scene-tests.ts",
     "generate:telegram-tests": "bun run scripts/generate-telegram-tests.ts",
-    "tdd": "bash scripts/tdd-cycle.sh"
+    "tdd": "bash scripts/tdd-cycle.sh",
+    "export:obsidian": "bun run scripts/export-to-obsidian.ts"
   },
   "keywords": [
     "instagram",
