@@ -13,18 +13,24 @@ jobs:
   update-vault:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: 📥 Checkout
         uses: actions/checkout@v4
-      - name: Setup Node
+      - name: 🟢 Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - name: Install
-        run: npm ci
-      - name: Send Telegram
+      - name: 📦 Install dependencies
+        run: npm install
+      - name: 📱 Send Telegram notification
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         run: |
-          curl -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
-            -d "chat_id=144022504" \
-            -d "text=✅ GitHub Actions работает! Workflow запущен успешно."
+          echo "📱 Отправляем Telegram уведомление..."
+          if [ -n "$TELEGRAM_BOT_TOKEN" ]; then
+            curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
+              -d "chat_id=144022504" \
+              -d "text=✅ GitHub Actions работает! 🔄 Workflow запущен успешно."
+            echo "📱 Telegram уведомление отправлено!"
+          else
+            echo "⚠️ TELEGRAM_BOT_TOKEN не настроен"
+          fi
