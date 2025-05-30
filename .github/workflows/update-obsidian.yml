@@ -21,16 +21,49 @@ jobs:
           node-version: '20'
       - name: 📦 Install dependencies
         run: npm install
+      
+      - name: 🔍 Debug environment
+        run: |
+          echo "🔍 Проверяем переменные окружения..."
+          echo "TELEGRAM_BOT_TOKEN length: ${#TELEGRAM_BOT_TOKEN}"
+          if [ -n "$TELEGRAM_BOT_TOKEN" ]; then
+            echo "✅ TELEGRAM_BOT_TOKEN установлен (первые 10 символов: ${TELEGRAM_BOT_TOKEN:0:10}...)"
+          else
+            echo "❌ TELEGRAM_BOT_TOKEN НЕ УСТАНОВЛЕН!"
+          fi
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      
       - name: 📱 Send Telegram notification
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         run: |
           echo "📱 Отправляем Telegram уведомление..."
-          if [ -n "$TELEGRAM_BOT_TOKEN" ]; then
-            curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
-              -d "chat_id=144022504" \
-              -d "text=✅ GitHub Actions работает! 🔄 Workflow запущен успешно."
-            echo "📱 Telegram уведомление отправлено!"
+          
+          if [ -z "$TELEGRAM_BOT_TOKEN" ]; then
+            echo "❌ ОШИБКА: TELEGRAM_BOT_TOKEN не настроен в GitHub Secrets!"
+            echo "📋 Инструкция:"
+            echo "1. Идите в Settings → Secrets and variables → Actions"
+            echo "2. Нажмите 'New repository secret'"
+            echo "3. Name: TELEGRAM_BOT_TOKEN"
+            echo "4. Value: ваш токен бота"
+            exit 1
+          fi
+          
+          echo "✅ Токен найден, отправляем сообщение..."
+          
+          RESPONSE=$(curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
+            -d "chat_id=144022504" \
+            -d "text=🎉 GitHub Actions работает! 🔄 Workflow запущен успешно.
+
+          📅 Время: $(date '+%d.%m.%Y %H:%M') UTC
+          🤖 Автоматическое уведомление из GitHub Actions")
+          
+          echo "📡 Ответ Telegram API: $RESPONSE"
+          
+          if echo "$RESPONSE" | grep -q '"ok":true'; then
+            echo "✅ Сообщение успешно отправлено!"
           else
-            echo "⚠️ TELEGRAM_BOT_TOKEN не настроен"
+            echo "❌ Ошибка отправки сообщения!"
+            echo "🔍 Проверьте токен бота и права доступа"
           fi
