@@ -22,8 +22,12 @@ projectScene.command("start", async (ctx) => {
 // --- Enter Scene Handler ---
 export async function handleProjectEnter(ctx: ScraperBotContext) {
   console.log("PROJECT_SCENE_DEBUG: enter handler triggered");
+  console.log("PROJECT_SCENE_DEBUG: Context type:", ctx.updateType);
+  console.log("PROJECT_SCENE_DEBUG: Session state at enter:", JSON.stringify(ctx.scene.session));
+
   if (!ctx.from) {
     logger.error("projectScene.enter: ctx.from is undefined");
+    console.log("PROJECT_SCENE_DEBUG: ctx.from is undefined, leaving scene");
     await ctx.reply(
       "Не удалось определить пользователя. Попробуйте перезапустить бота командой /start."
     );
@@ -103,16 +107,28 @@ export async function handleExitSceneAction(ctx: ScraperBotContext) {
 
 export async function handleCreateProjectAction(ctx: ScraperBotContext) {
   console.log("PROJECT_SCENE_DEBUG: handleCreateProjectAction triggered");
+  console.log("PROJECT_SCENE_DEBUG: Callback query data:", ctx.callbackQuery?.data);
+  console.log("PROJECT_SCENE_DEBUG: Current session state:", JSON.stringify(ctx.scene.session));
+
   ctx.scene.session.step = ScraperSceneStep.CREATE_PROJECT;
+  console.log("PROJECT_SCENE_DEBUG: Set session step to CREATE_PROJECT:", ctx.scene.session.step);
+
   await ctx.reply(
     "Введите название нового проекта (например, 'Клиника Аврора МСК'):",
     Markup.inlineKeyboard([
       Markup.button.callback("Отмена", "back_to_projects"),
     ])
   );
+  console.log("PROJECT_SCENE_DEBUG: Sent reply with prompt for project name");
+
   if (ctx.callbackQuery) {
     await ctx.answerCbQuery();
+    console.log("PROJECT_SCENE_DEBUG: Answered callback query");
+  } else {
+    console.log("PROJECT_SCENE_DEBUG: No callback query to answer");
   }
+
+  console.log("PROJECT_SCENE_DEBUG: handleCreateProjectAction completed");
 }
 
 export async function handleBackToProjectsAction(ctx: ScraperBotContext) {
@@ -269,16 +285,24 @@ registerButtons(projectScene, [
 // --- Text Handler (Обработчик текстовых сообщений) ---
 export async function handleProjectText(ctx: ScraperBotContext) {
   console.log("PROJECT_SCENE_DEBUG: handleProjectText triggered");
+  console.log("PROJECT_SCENE_DEBUG: Current session state:", JSON.stringify(ctx.scene.session));
+
   if (!ctx.message || !("text" in ctx.message)) {
     logger.warn(
       "[ProjectScene] handleProjectText: Received non-text message or no message"
     );
+    console.log("PROJECT_SCENE_DEBUG: Received non-text message or no message");
     return;
   }
+
   const text = ctx.message.text;
+  console.log(`PROJECT_SCENE_DEBUG: Received text message: "${text}"`);
+
   const userSession = ctx.scene.session;
+  console.log(`PROJECT_SCENE_DEBUG: Current step: ${userSession.step}`);
 
   if (userSession.step === ScraperSceneStep.CREATE_PROJECT) {
+    console.log("PROJECT_SCENE_DEBUG: Processing CREATE_PROJECT step");
     if (!ctx.from) {
       logger.error("handleProjectText: ctx.from is undefined");
       await ctx.reply("Не удалось определить пользователя. Попробуйте /start.");
@@ -295,12 +319,17 @@ export async function handleProjectText(ctx: ScraperBotContext) {
     }
 
     try {
+      console.log(`PROJECT_SCENE_DEBUG: Initializing storage for project creation: "${projectName}"`);
       await ctx.storage.initialize();
+
+      console.log(`PROJECT_SCENE_DEBUG: Getting user by telegram ID: ${telegramId}`);
       const user = await ctx.storage.getUserByTelegramId(telegramId);
+
       if (!user) {
         logger.error(
           `[ProjectScene] User not found for telegram_id: ${telegramId} during project creation`
         );
+        console.log(`PROJECT_SCENE_DEBUG: User not found for telegram_id: ${telegramId}`);
         await ctx.reply(
           "Произошла ошибка: пользователь не найден. Попробуйте /start."
         );
@@ -308,19 +337,31 @@ export async function handleProjectText(ctx: ScraperBotContext) {
         return ctx.scene.leave();
       }
 
+      console.log(`PROJECT_SCENE_DEBUG: Creating project "${projectName}" for user ID: ${user.id}`);
       const newProject = await ctx.storage.createProject(user.id, projectName);
+
       if (newProject) {
         logger.info(
           `[ProjectScene] Project "${projectName}" created for user ${user.id}`
         );
+        console.log(`PROJECT_SCENE_DEBUG: Project created successfully with ID: ${newProject.id}`);
+
         await ctx.reply(`Проект "${newProject.name}" успешно создан!`);
+        console.log(`PROJECT_SCENE_DEBUG: Success message sent to user`);
+
         userSession.currentProjectId = newProject.id;
         userSession.step = undefined;
+        console.log(`PROJECT_SCENE_DEBUG: Session updated, reentering scene`);
+        console.log(`PROJECT_SCENE_DEBUG: Session state before reenter:`, JSON.stringify(userSession));
+
         await ctx.scene.reenter();
+        console.log(`PROJECT_SCENE_DEBUG: Scene reentered after project creation`);
       } else {
         logger.error(
           `[ProjectScene] Failed to create project "${projectName}" for user ${user.id}`
         );
+        console.log(`PROJECT_SCENE_DEBUG: Failed to create project`);
+
         await ctx.reply(
           "Не удалось создать проект. Попробуйте еще раз или обратитесь в поддержку."
         );
